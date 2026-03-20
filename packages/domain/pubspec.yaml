@@ -1,0 +1,8 @@
+name: domain
+description: Shared domain models and marketplace rules for One of One.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: "^3.10.4"

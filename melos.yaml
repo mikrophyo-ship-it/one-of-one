@@ -1,0 +1,4 @@
+name: oneofone_workspace
+packages:
+  - apps/**
+  - packages/**

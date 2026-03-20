@@ -1,0 +1,10 @@
+.dart_tool/
+.dart_home/
+**/.dart_tool/
+build/
+coverage/
+.env
+.idea/
+.vscode/
+*.iml
+.DS_Store

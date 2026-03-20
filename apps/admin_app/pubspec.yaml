@@ -1,0 +1,25 @@
+name: admin_app
+description: One of One admin operations console.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: "^3.10.4"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  core_ui:
+    path: ../../packages/core_ui
+  data:
+    path: ../../packages/data
+  domain:
+    path: ../../packages/domain
+  utils:
+    path: ../../packages/utils
+
+flutter:
+  uses-material-design: true
+
+

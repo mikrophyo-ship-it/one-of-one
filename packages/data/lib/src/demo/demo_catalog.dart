@@ -1,0 +1,367 @@
+import 'package:domain/domain.dart';
+
+import '../repositories/marketplace_repository.dart';
+
+class DemoCatalog implements MarketplaceRepository {
+  DemoCatalog({MarketplaceRules? rules}) : _rules = rules ?? const MarketplaceRules(platformFeeBps: 1000, defaultRoyaltyBps: 1200) {
+    _items = <UniqueItem>[
+      const UniqueItem(
+        id: 'item_afterglow_01',
+        serialNumber: 'OOO-AG-0001',
+        artworkId: 'artwork_afterglow',
+        artistId: 'artist_maya',
+        productName: 'Afterglow Hand-Finished Tee',
+        state: ItemState.listedForResale,
+        currentOwnerUserId: 'user_collector_1',
+        claimCodeConsumed: true,
+        askingPrice: 180000,
+      ),
+      const UniqueItem(
+        id: 'item_ember_02',
+        serialNumber: 'OOO-EM-0002',
+        artworkId: 'artwork_afterglow',
+        artistId: 'artist_maya',
+        productName: 'Ember Archive Crew',
+        state: ItemState.soldUnclaimed,
+        currentOwnerUserId: null,
+        claimCodeConsumed: false,
+        askingPrice: null,
+      ),
+      const UniqueItem(
+        id: 'item_restricted_03',
+        serialNumber: 'OOO-RS-0003',
+        artworkId: 'artwork_afterglow',
+        artistId: 'artist_maya',
+        productName: 'Restricted Study Hoodie',
+        state: ItemState.frozen,
+        currentOwnerUserId: 'user_collector_2',
+        claimCodeConsumed: true,
+        askingPrice: null,
+      ),
+    ];
+    _listings = <Listing>[
+      const Listing(
+        id: 'listing_1',
+        itemId: 'item_afterglow_01',
+        sellerUserId: 'user_collector_1',
+        askingPrice: 180000,
+        isActive: true,
+      ),
+    ];
+    _ownershipRecords = <OwnershipRecord>[
+      OwnershipRecord(
+        id: 'ownership_1',
+        itemId: 'item_afterglow_01',
+        ownerUserId: 'business_inventory',
+        acquiredAt: DateTime(2026, 1, 12),
+        relinquishedAt: DateTime(2026, 1, 18),
+      ),
+      OwnershipRecord(
+        id: 'ownership_2',
+        itemId: 'item_afterglow_01',
+        ownerUserId: 'user_collector_1',
+        acquiredAt: DateTime(2026, 1, 18),
+      ),
+      OwnershipRecord(
+        id: 'ownership_3',
+        itemId: 'item_restricted_03',
+        ownerUserId: 'user_collector_2',
+        acquiredAt: DateTime(2026, 2, 1),
+      ),
+    ];
+  }
+
+  final MarketplaceRules _rules;
+
+  static const Artist maya = Artist(
+    id: 'artist_maya',
+    displayName: 'Maya Vale',
+    slug: 'maya-vale',
+    royaltyBps: 1200,
+    authenticityStatement: 'Created and finished by Maya Vale in-studio, without generative tooling.',
+  );
+
+  static final Artwork artwork = Artwork(
+    id: 'artwork_afterglow',
+    artistId: maya.id,
+    title: 'Afterglow No. 01',
+    story: 'A hand-painted study of nightlife reflections translated into a single collectible garment.',
+    humanMadeProof: <String>[
+      'Graphite composition studies',
+      'Studio paint process stills',
+      'Signed finishing statement',
+    ],
+    createdOn: DateTime(2026, 1, 10),
+  );
+
+  late final List<UniqueItem> _items;
+  late final List<Listing> _listings;
+  late final List<OwnershipRecord> _ownershipRecords;
+
+  @override
+  List<Listing> activeListings() =>
+      List<Listing>.unmodifiable(_listings.where((Listing listing) => listing.isActive));
+
+  @override
+  Artwork? artworkById(String artworkId) {
+    if (artwork.id == artworkId) {
+      return artwork;
+    }
+    return null;
+  }
+
+  @override
+  List<Artwork> artworks() => <Artwork>[artwork];
+
+  @override
+  MarketplaceActionResult<UniqueItem> buyResaleItem({
+    required String itemId,
+    required String buyerUserId,
+    required String providerReference,
+  }) {
+    final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
+    if (itemIndex == -1) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'Resale item not found.',
+      );
+    }
+
+    final UniqueItem item = _items[itemIndex];
+    final int listingIndex = _listings.indexWhere((Listing listing) => listing.itemId == itemId && listing.isActive);
+    if (listingIndex == -1) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'Active listing not found for this collectible.',
+      );
+    }
+
+    final Listing listing = _listings[listingIndex];
+    if (listing.sellerUserId == buyerUserId) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'You cannot purchase your own listing.',
+      );
+    }
+    if (_rules.blocksMarketplaceAction(item.state)) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'Restricted items cannot be sold or transferred.',
+      );
+    }
+
+    final UniqueItem transferred = _rules.completeResale(
+      item: item.copyWith(state: ItemState.salePending),
+      order: Order(
+        id: 'order-$itemId',
+        itemId: itemId,
+        buyerUserId: buyerUserId,
+        amount: listing.askingPrice,
+        paymentCaptured: true,
+      ),
+    );
+
+    _items[itemIndex] = transferred;
+    _listings[listingIndex] = listing.copyWith(isActive: false);
+    _closeOpenOwnershipRecord(itemId);
+    _ownershipRecords.add(
+      OwnershipRecord(
+        id: 'ownership_${_ownershipRecords.length + 1}',
+        itemId: itemId,
+        ownerUserId: buyerUserId,
+        acquiredAt: DateTime.now(),
+      ),
+    );
+
+    return MarketplaceActionResult<UniqueItem>(
+      success: true,
+      message: 'Payment captured with reference $providerReference. Ownership transferred on-platform.',
+      data: transferred,
+    );
+  }
+
+  @override
+  MarketplaceActionResult<UniqueItem> claimOwnership({
+    required String itemId,
+    required String claimCode,
+    required String userId,
+  }) {
+    final int index = _items.indexWhere((UniqueItem item) => item.id == itemId);
+    if (index == -1) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'Collectible not found.',
+      );
+    }
+
+    final UniqueItem item = _items[index];
+    final ClaimResult result = _rules.validateClaim(
+      item: item,
+      providedClaimCode: claimCode,
+      expectedClaimCode: 'CLAIM-${item.serialNumber}',
+    );
+    if (!result.success) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: result.message,
+      );
+    }
+
+    final UniqueItem claimed = item.copyWith(
+      state: ItemState.claimed,
+      currentOwnerUserId: userId,
+      claimCodeConsumed: true,
+    );
+    _items[index] = claimed;
+    _ownershipRecords.add(
+      OwnershipRecord(
+        id: 'ownership_${_ownershipRecords.length + 1}',
+        itemId: itemId,
+        ownerUserId: userId,
+        acquiredAt: DateTime.now(),
+      ),
+    );
+
+    return MarketplaceActionResult<UniqueItem>(
+      success: true,
+      message: 'Ownership claim approved and refreshed from the server contract.',
+      data: claimed,
+    );
+  }
+
+  @override
+  MarketplaceActionResult<Listing> createResaleListing({
+    required String itemId,
+    required String userId,
+    required int priceCents,
+  }) {
+    final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
+    if (itemIndex == -1) {
+      return const MarketplaceActionResult<Listing>(
+        success: false,
+        message: 'Collectible not found.',
+      );
+    }
+
+    final UniqueItem item = _items[itemIndex];
+    if (_rules.blocksMarketplaceAction(item.state)) {
+      return const MarketplaceActionResult<Listing>(
+        success: false,
+        message: 'Restricted items cannot be listed.',
+      );
+    }
+    if (!_rules.canListForResale(item: item, actingUserId: userId)) {
+      return const MarketplaceActionResult<Listing>(
+        success: false,
+        message: 'Only the recorded current owner can list this collectible.',
+      );
+    }
+    if (_listings.any((Listing listing) => listing.itemId == itemId && listing.isActive)) {
+      return const MarketplaceActionResult<Listing>(
+        success: false,
+        message: 'An active listing already exists for this collectible.',
+      );
+    }
+
+    final Listing listing = Listing(
+      id: 'listing_${_listings.length + 1}',
+      itemId: itemId,
+      sellerUserId: userId,
+      askingPrice: priceCents,
+      isActive: true,
+    );
+    _listings.add(listing);
+    _items[itemIndex] = item.copyWith(
+      state: ItemState.listedForResale,
+      askingPrice: priceCents,
+    );
+
+    return MarketplaceActionResult<Listing>(
+      success: true,
+      message: 'Listing published. Backend eligibility and royalty logic applied.',
+      data: listing,
+    );
+  }
+
+  @override
+  List<Artist> featuredArtists() => const <Artist>[maya];
+
+  @override
+  UniqueItem? itemById(String itemId) {
+    for (final UniqueItem item in _items) {
+      if (item.id == itemId) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  @override
+  List<UniqueItem> items() => List<UniqueItem>.unmodifiable(_items);
+
+  @override
+  MarketplaceActionResult<UniqueItem> openDispute({
+    required String itemId,
+    required String userId,
+    required String reason,
+    required bool freeze,
+  }) {
+    final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
+    if (itemIndex == -1) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'Collectible not found.',
+      );
+    }
+
+    final UniqueItem item = _items[itemIndex];
+    if (item.currentOwnerUserId != null && item.currentOwnerUserId != userId) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'Only the recorded owner can raise this dispute in the demo workflow.',
+      );
+    }
+
+    final UniqueItem updated = item.copyWith(
+      state: freeze ? ItemState.frozen : ItemState.disputed,
+      askingPrice: null,
+    );
+    _items[itemIndex] = updated;
+    _deactivateListings(itemId);
+
+    return MarketplaceActionResult<UniqueItem>(
+      success: true,
+      message: '${freeze ? 'Freeze' : 'Dispute'} recorded for review: $reason',
+      data: updated,
+    );
+  }
+
+  @override
+  List<OwnershipRecord> ownershipHistory(String itemId) => List<OwnershipRecord>.unmodifiable(
+        _ownershipRecords.where((OwnershipRecord record) => record.itemId == itemId),
+      );
+
+  void _closeOpenOwnershipRecord(String itemId) {
+    for (int i = 0; i < _ownershipRecords.length; i++) {
+      final OwnershipRecord record = _ownershipRecords[i];
+      if (record.itemId == itemId && record.relinquishedAt == null) {
+        _ownershipRecords[i] = OwnershipRecord(
+          id: record.id,
+          itemId: record.itemId,
+          ownerUserId: record.ownerUserId,
+          acquiredAt: record.acquiredAt,
+          relinquishedAt: DateTime.now(),
+        );
+      }
+    }
+  }
+
+  void _deactivateListings(String itemId) {
+    for (int i = 0; i < _listings.length; i++) {
+      final Listing listing = _listings[i];
+      if (listing.itemId == itemId && listing.isActive) {
+        _listings[i] = listing.copyWith(isActive: false);
+      }
+    }
+  }
+}

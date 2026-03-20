@@ -1,0 +1,14 @@
+name: data
+description: Demo repositories and application-facing data adapters.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: "^3.10.4"
+
+dependencies:
+  domain:
+    path: ../domain
+
+

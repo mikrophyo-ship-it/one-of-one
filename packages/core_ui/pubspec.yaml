@@ -1,0 +1,14 @@
+name: core_ui
+description: Shared premium design system for One of One.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: "^3.10.4"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+

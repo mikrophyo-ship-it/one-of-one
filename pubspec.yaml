@@ -1,0 +1,14 @@
+name: oneofone_workspace
+publish_to: none
+environment:
+  sdk: "^3.10.4"
+
+workspace:
+  - apps/customer_app
+  - apps/admin_app
+  - packages/core_ui
+  - packages/domain
+  - packages/data
+  - packages/services
+  - packages/utils
+
