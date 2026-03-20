@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:core_ui/core_ui.dart';
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
@@ -30,20 +32,30 @@ class CustomerRoot extends StatefulWidget {
 class _CustomerRootState extends State<CustomerRoot> {
   late final MarketplaceRepository repository;
   late final MarketplaceWorkflowService workflowService;
+  late final SupabaseAuthService authService;
   late final CustomerController controller;
 
   @override
   void initState() {
     super.initState();
-    if (const String.fromEnvironment('SUPABASE_URL').isNotEmpty &&
-        const String.fromEnvironment('SUPABASE_ANON_KEY').isNotEmpty) {
-      repository = SupabaseMarketplaceRepository(client: Supabase.instance.client);
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    final String? configurationError = url.isEmpty || anonKey.isEmpty
+        ? 'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.'
+        : null;
+
+    if (configurationError == null) {
+      repository = SupabaseMarketplaceRepository(
+        client: Supabase.instance.client,
+      );
+      authService = SupabaseAuthService(client: Supabase.instance.client);
     } else {
       repository = SupabaseMarketplaceRepository(
-        configurationError:
-            'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.',
+        configurationError: configurationError,
       );
+      authService = SupabaseAuthService(configurationError: configurationError);
     }
+
     workflowService = MarketplaceWorkflowService(
       repository: repository,
       paymentProvider: const MockPaymentProvider(),
@@ -51,7 +63,15 @@ class _CustomerRootState extends State<CustomerRoot> {
     controller = CustomerController(
       repository: repository,
       workflowService: workflowService,
+      authService: authService,
     );
+    unawaited(controller.initialize());
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -59,6 +79,9 @@ class _CustomerRootState extends State<CustomerRoot> {
     return AnimatedBuilder(
       animation: controller,
       builder: (BuildContext context, _) {
+        if (controller.isInitializing) {
+          return const _StartupScreen();
+        }
         if (!controller.isAuthenticated) {
           return AuthScreen(controller: controller);
         }
@@ -101,7 +124,9 @@ class _CustomerRootState extends State<CustomerRoot> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF151515),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: OneOfOneTheme.gold.withOpacity(0.25)),
+                      border: Border.all(
+                        color: OneOfOneTheme.gold.withOpacity(0.25),
+                      ),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -109,11 +134,13 @@ class _CustomerRootState extends State<CustomerRoot> {
                       children: controller.notifications.isEmpty
                           ? <Widget>[const Text('No new notifications.')]
                           : controller.notifications
-                              .map((String note) => Padding(
+                                .map(
+                                  (String note) => Padding(
                                     padding: const EdgeInsets.only(bottom: 10),
                                     child: Text(note),
-                                  ))
-                              .toList(),
+                                  ),
+                                )
+                                .toList(),
                     ),
                   ),
                 ),
@@ -130,11 +157,26 @@ class _CustomerRootState extends State<CustomerRoot> {
             selectedIndex: controller.index,
             onDestinationSelected: controller.setIndex,
             destinations: const <Widget>[
-              NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-              NavigationDestination(icon: Icon(Icons.auto_awesome_mosaic_outlined), label: 'Shop'),
-              NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined), label: 'Scan'),
-              NavigationDestination(icon: Icon(Icons.inventory_2_outlined), label: 'Vault'),
-              NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
+              NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.auto_awesome_mosaic_outlined),
+                label: 'Shop',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.qr_code_scanner_outlined),
+                label: 'Scan',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.inventory_2_outlined),
+                label: 'Vault',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                label: 'Profile',
+              ),
             ],
           ),
         );
@@ -147,17 +189,25 @@ class CustomerController extends ChangeNotifier {
   CustomerController({
     required MarketplaceRepository repository,
     required MarketplaceWorkflowService workflowService,
-  })  : _repository = repository,
-        _workflowService = workflowService;
+    required SupabaseAuthService authService,
+  }) : _repository = repository,
+       _workflowService = workflowService,
+       _authService = authService;
 
   final MarketplaceRepository _repository;
   final MarketplaceWorkflowService _workflowService;
+  final SupabaseAuthService _authService;
 
+  StreamSubscription<AuthState>? _authSubscription;
+
+  bool isInitializing = true;
   bool isAuthenticated = false;
   bool showInbox = false;
   bool isBusy = false;
   int index = 0;
-  String currentUserId = 'user_collector_1';
+  String currentUserId = '';
+  String? currentUserEmail;
+  String? currentDisplayName;
   String? statusMessage;
   String? errorMessage;
   final List<String> notifications = <String>[
@@ -165,44 +215,116 @@ class CustomerController extends ChangeNotifier {
     'Ownership certificate ready for download.',
   ];
 
+  bool get authConfigured => _authService.isConfigured;
+
   List<Artist> get artists => _repository.featuredArtists();
   List<Artwork> get artworks => _repository.artworks();
   List<UniqueItem> get items => _repository.items();
   List<Listing> get listings => _repository.activeListings();
-  List<UniqueItem> get vaultItems =>
-      items.where((UniqueItem item) => item.currentOwnerUserId == currentUserId).toList();
+  List<UniqueItem> get vaultItems => items
+      .where((UniqueItem item) => item.currentOwnerUserId == currentUserId)
+      .toList();
 
-  Artwork artworkFor(UniqueItem item) =>
-      _repository.artworkById(item.artworkId) ?? artworks.first;
+  Future<void> initialize() async {
+    _authSubscription ??= _authService.authStateChanges().listen((AuthState _) {
+      unawaited(_syncSessionState());
+    });
+    await _syncSessionState(
+      restoredMessage: _authService.currentSession == null
+          ? null
+          : 'Collector session restored from Supabase.',
+    );
+  }
 
-  List<OwnershipRecord> historyFor(String itemId) => _repository.ownershipHistory(itemId);
+  Artist? artistFor(UniqueItem item) {
+    for (final Artist artist in artists) {
+      if (artist.id == item.artistId) {
+        return artist;
+      }
+    }
+    return artists.isEmpty ? null : artists.first;
+  }
+
+  Artwork? artworkFor(UniqueItem item) {
+    final Artwork? direct = _repository.artworkById(item.artworkId);
+    if (direct != null) {
+      return direct;
+    }
+    return artworks.isEmpty ? null : artworks.first;
+  }
+
+  List<OwnershipRecord> historyFor(String itemId) =>
+      _repository.ownershipHistory(itemId);
 
   UniqueItem? itemById(String itemId) => _repository.itemById(itemId);
 
   FeeBreakdown breakdownFor(UniqueItem item) {
     return MarketplaceRules(
       platformFeeBps: 1000,
-      defaultRoyaltyBps: artists.first.royaltyBps,
+      defaultRoyaltyBps: artistFor(item)?.royaltyBps ?? 0,
     ).calculateResaleBreakdown(
       resalePrice: item.askingPrice ?? 0,
-      royaltyBps: artists.first.royaltyBps,
+      royaltyBps: artistFor(item)?.royaltyBps ?? 0,
     );
   }
 
-  Future<void> signIn() async {
+  Future<void> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    await _runAuthRequest(
+      operation: () =>
+          _authService.signInWithPassword(email: email, password: password),
+      successMessageFallback: 'Signed in and collector profile synced.',
+    );
+  }
+
+  Future<void> signUpWithEmail({
+    required String displayName,
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    await _runAuthRequest(
+      operation: () => _authService.signUpWithPassword(
+        email: email,
+        password: password,
+        displayName: displayName,
+        username: username,
+      ),
+      successMessageFallback: 'Collector account created and profile synced.',
+    );
+  }
+
+  Future<void> sendPasswordReset({required String email}) async {
     isBusy = true;
     errorMessage = null;
     statusMessage = null;
     notifyListeners();
 
-    currentUserId = _repository.currentUserId() ?? 'guest_preview';
-    await _repository.refresh(userId: currentUserId);
-    isAuthenticated = true;
+    final AuthActionResult result = await _authService.sendPasswordReset(
+      email: email,
+    );
     isBusy = false;
-    statusMessage = currentUserId == 'guest_preview'
-        ? 'Preview mode loaded. Sign into Supabase Auth to claim, list, buy, or dispute.'
-        : 'Marketplace refreshed from Supabase for the active collector session.';
+    if (result.success) {
+      statusMessage = result.message;
+    } else {
+      errorMessage = result.message;
+    }
     notifyListeners();
+  }
+
+  Future<void> signOut() async {
+    isBusy = true;
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    await _authService.signOut();
+    await _syncSessionState(
+      restoredMessage:
+          'Signed out. Sign back in to manage ownership and resale.',
+    );
   }
 
   void setIndex(int value) {
@@ -219,6 +341,11 @@ class CustomerController extends ChangeNotifier {
     required String itemId,
     required String claimCode,
   }) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
     return _runAction<UniqueItem>(
       operation: () => _workflowService.claimOwnership(
         itemId: itemId,
@@ -227,7 +354,10 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(0, 'Ownership refreshed for ${item.serialNumber}.');
+          notifications.insert(
+            0,
+            'Ownership refreshed for ${item.serialNumber}.',
+          );
         }
         return message;
       },
@@ -238,6 +368,11 @@ class CustomerController extends ChangeNotifier {
     required String itemId,
     required int priceCents,
   }) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
     return _runAction<Listing>(
       operation: () => _workflowService.createResaleListing(
         itemId: itemId,
@@ -246,7 +381,10 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (Listing? listing, String message) {
         if (listing != null) {
-          notifications.insert(0, 'Listing ${listing.id} is live for on-platform resale.');
+          notifications.insert(
+            0,
+            'Listing ${listing.id} is live for on-platform resale.',
+          );
         }
         return message;
       },
@@ -254,6 +392,11 @@ class CustomerController extends ChangeNotifier {
   }
 
   Future<String> buyResale({required String itemId}) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
     return _runAction<UniqueItem>(
       operation: () => _workflowService.buyResaleItem(
         itemId: itemId,
@@ -261,7 +404,10 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(0, '${item.serialNumber} transferred after successful on-platform checkout.');
+          notifications.insert(
+            0,
+            '${item.serialNumber} transferred after successful on-platform checkout.',
+          );
         }
         return message;
       },
@@ -273,6 +419,11 @@ class CustomerController extends ChangeNotifier {
     required String reason,
     required bool freeze,
   }) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
     return _runAction<UniqueItem>(
       operation: () => _workflowService.openDispute(
         itemId: itemId,
@@ -282,11 +433,96 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(0, '${item.serialNumber} moved to ${item.state.key.replaceAll('_', ' ')} for review.');
+          notifications.insert(
+            0,
+            '${item.serialNumber} moved to ${item.state.key.replaceAll('_', ' ')} for review.',
+          );
         }
         return message;
       },
     );
+  }
+
+  Future<void> _runAuthRequest({
+    required Future<AuthActionResult> Function() operation,
+    required String successMessageFallback,
+  }) async {
+    isBusy = true;
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    final AuthActionResult result = await operation();
+    if (!result.success) {
+      isBusy = false;
+      errorMessage = result.message;
+      notifyListeners();
+      return;
+    }
+
+    if (result.requiresEmailConfirmation || _authService.currentUser == null) {
+      isBusy = false;
+      statusMessage = result.message;
+      notifyListeners();
+      return;
+    }
+
+    await _syncSessionState(
+      restoredMessage: result.message.isEmpty
+          ? successMessageFallback
+          : result.message,
+    );
+  }
+
+  Future<void> _syncSessionState({String? restoredMessage}) async {
+    final User? user = _authService.currentUser;
+    errorMessage = null;
+
+    if (user == null) {
+      currentUserId = '';
+      currentUserEmail = null;
+      currentDisplayName = null;
+      isAuthenticated = false;
+      await _repository.refresh(userId: '');
+      isInitializing = false;
+      isBusy = false;
+      if (restoredMessage != null) {
+        statusMessage = restoredMessage;
+      } else if (!authConfigured) {
+        errorMessage =
+            'Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY to this build.';
+      }
+      notifyListeners();
+      return;
+    }
+
+    currentUserId = user.id;
+    currentUserEmail = user.email;
+    currentDisplayName = _displayNameForUser(user);
+    await _repository.refresh(userId: user.id);
+    isAuthenticated = true;
+    isInitializing = false;
+    isBusy = false;
+    statusMessage =
+        restoredMessage ??
+        'Marketplace refreshed from Supabase for the active collector session.';
+    notifyListeners();
+  }
+
+  String? _requireAuthenticatedAction() {
+    if (!authConfigured) {
+      return 'Supabase is not configured for this build.';
+    }
+    if (!isAuthenticated || currentUserId.isEmpty) {
+      return 'Sign in with your collector account to continue.';
+    }
+    return null;
+  }
+
+  String _failAction(String message) {
+    errorMessage = message;
+    notifyListeners();
+    return message;
   }
 
   Future<String> _runAction<T>({
@@ -310,56 +546,340 @@ class CustomerController extends ChangeNotifier {
     notifyListeners();
     return result.message;
   }
+
+  String _displayNameForUser(User user) {
+    final String? metadataDisplayName = user.userMetadata?['display_name']
+        ?.toString();
+    if (metadataDisplayName != null && metadataDisplayName.trim().isNotEmpty) {
+      return metadataDisplayName.trim();
+    }
+    final String? email = user.email;
+    if (email != null && email.contains('@')) {
+      return email.split('@').first;
+    }
+    return 'Collector';
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 }
 
-class AuthScreen extends StatelessWidget {
+class _StartupScreen extends StatelessWidget {
+  const _StartupScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: <Color>[Color(0xFF080808), Color(0xFF21180A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text('ONE OF ONE'),
+              SizedBox(height: 16),
+              CircularProgressIndicator(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum AuthMode { signIn, signUp, resetPassword }
+
+class AuthScreen extends StatefulWidget {
   const AuthScreen({required this.controller, super.key});
 
   final CustomerController controller;
 
   @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _displayNameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  AuthMode _mode = AuthMode.signIn;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    switch (_mode) {
+      case AuthMode.signIn:
+        await widget.controller.signInWithEmail(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+        return;
+      case AuthMode.signUp:
+        await widget.controller.signUpWithEmail(
+          displayName: _displayNameController.text,
+          username: _usernameController.text,
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+        return;
+      case AuthMode.resetPassword:
+        await widget.controller.sendPasswordReset(email: _emailController.text);
+        return;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final bool isBusy = widget.controller.isBusy;
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text('Collect the original.', style: Theme.of(context).textTheme.displaySmall),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Sign in to claim ownership, access your vault, and resell authenticated pieces on-platform only.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 20),
-                    const TextField(decoration: InputDecoration(labelText: 'Email')),
-                    const SizedBox(height: 12),
-                    const TextField(obscureText: true, decoration: InputDecoration(labelText: 'Password')),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          await controller.signIn();
-                        },
-                        child: const Text('Sign In'),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: <Color>[
+              Color(0xFF060606),
+              Color(0xFF191109),
+              Color(0xFF060606),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Form(
+                      key: _formKey,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'Collect the original.',
+                            style: Theme.of(context).textTheme.displaySmall,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _headlineCopy(),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 20),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              _modeButton(context, AuthMode.signIn, 'Sign in'),
+                              _modeButton(
+                                context,
+                                AuthMode.signUp,
+                                'Create account',
+                              ),
+                              _modeButton(
+                                context,
+                                AuthMode.resetPassword,
+                                'Reset password',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          if (widget.controller.errorMessage != null)
+                            _MessageCard(
+                              icon: Icons.error_outline,
+                              message: widget.controller.errorMessage!,
+                            ),
+                          if (widget.controller.statusMessage != null)
+                            _MessageCard(
+                              icon: Icons.verified_outlined,
+                              message: widget.controller.statusMessage!,
+                            ),
+                          if (!widget.controller.authConfigured)
+                            const _MessageCard(
+                              icon: Icons.settings_ethernet,
+                              message:
+                                  'Supabase configuration is required for real collector authentication.',
+                            ),
+                          if (_mode == AuthMode.signUp) ...<Widget>[
+                            TextFormField(
+                              controller: _displayNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Display name',
+                              ),
+                              textInputAction: TextInputAction.next,
+                              validator: (String? value) => validateRequired(
+                                value ?? '',
+                                field: 'Display name',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _usernameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Username',
+                              ),
+                              textInputAction: TextInputAction.next,
+                              validator: (String? value) =>
+                                  validateUsername(value ?? ''),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          TextFormField(
+                            controller: _emailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: _mode == AuthMode.resetPassword
+                                ? TextInputAction.done
+                                : TextInputAction.next,
+                            validator: (String? value) =>
+                                validateEmail(value ?? ''),
+                          ),
+                          if (_mode != AuthMode.resetPassword) ...<Widget>[
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _passwordController,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                suffixIcon: IconButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                ),
+                              ),
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              validator: (String? value) =>
+                                  validatePassword(value ?? ''),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed:
+                                  isBusy || !widget.controller.authConfigured
+                                  ? null
+                                  : _submit,
+                              child: Text(_primaryActionLabel()),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _footnoteCopy(),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ),
-                    TextButton(onPressed: () async { await controller.signIn(); }, child: const Text('Create account')),
-                    TextButton(onPressed: () async { await controller.signIn(); }, child: const Text('Forgot password')),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _modeButton(BuildContext context, AuthMode mode, String label) {
+    final bool selected = _mode == mode;
+    return OutlinedButton(
+      onPressed: () {
+        setState(() {
+          _mode = mode;
+        });
+      },
+      style: OutlinedButton.styleFrom(
+        backgroundColor: selected
+            ? OneOfOneTheme.gold.withOpacity(0.12)
+            : Colors.transparent,
+      ),
+      child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+    );
+  }
+
+  String _headlineCopy() {
+    switch (_mode) {
+      case AuthMode.signIn:
+        return 'Sign in to claim ownership, access your vault, and resell authenticated pieces on-platform only.';
+      case AuthMode.signUp:
+        return 'Create your collector account to bind provenance, ownership certificates, and future resale activity to you.';
+      case AuthMode.resetPassword:
+        return 'Reset your password to regain access to your verified collection and dispute tools.';
+    }
+  }
+
+  String _primaryActionLabel() {
+    switch (_mode) {
+      case AuthMode.signIn:
+        return 'Sign In';
+      case AuthMode.signUp:
+        return 'Create Collector Account';
+      case AuthMode.resetPassword:
+        return 'Send Reset Email';
+    }
+  }
+
+  String _footnoteCopy() {
+    switch (_mode) {
+      case AuthMode.signIn:
+        return 'Ownership actions stay server-authoritative and are validated by Supabase before any collectible state changes.';
+      case AuthMode.signUp:
+        return 'Profile bootstrap runs after account creation so claim, listing, checkout, and dispute RPCs have a verified collector identity.';
+      case AuthMode.resetPassword:
+        return 'Production deployments may set a dedicated password-reset redirect URL for mobile deep links.';
+    }
+  }
+}
+
+class _MessageCard extends StatelessWidget {
+  const _MessageCard({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: ListTile(leading: Icon(icon), title: Text(message)),
       ),
     );
   }
@@ -392,7 +912,16 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 16),
-        Text('Featured artists', style: Theme.of(context).textTheme.headlineSmall),
+        Text(
+          'Featured artists',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        if (controller.artists.isEmpty)
+          const Card(
+            child: ListTile(
+              title: Text('No featured artists are available yet.'),
+            ),
+          ),
         ...controller.artists.map(
           (Artist artist) => Card(
             child: ListTile(
@@ -403,14 +932,23 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Text('Recent resale activity', style: Theme.of(context).textTheme.headlineSmall),
+        Text(
+          'Recent resale activity',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
         if (controller.listings.isEmpty)
-          const Card(child: ListTile(title: Text('No live resale listings right now.'))),
+          const Card(
+            child: ListTile(title: Text('No live resale listings right now.')),
+          ),
         ...controller.listings.map(
           (Listing listing) => Card(
             child: ListTile(
-              title: Text('Verified resale ${formatCurrency(listing.askingPrice)}'),
-              subtitle: Text('Listing ${listing.id} for item ${listing.itemId}'),
+              title: Text(
+                'Verified resale ${formatCurrency(listing.askingPrice)}',
+              ),
+              subtitle: Text(
+                'Listing ${listing.id} for item ${listing.itemId}',
+              ),
               trailing: const Text('Private seller'),
             ),
           ),
@@ -427,6 +965,21 @@ class _HeroPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (controller.items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: <Color>[Color(0xFF20170A), Color(0xFF0A0A0A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: const Text('No collectible catalog is available yet.'),
+      );
+    }
+
     final UniqueItem item = controller.items.first;
     return Container(
       padding: const EdgeInsets.all(24),
@@ -441,17 +994,28 @@ class _HeroPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Latest collectible drop', style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            'Latest collectible drop',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
           const SizedBox(height: 8),
-          Text(item.productName, style: Theme.of(context).textTheme.displaySmall),
+          Text(
+            item.productName,
+            style: Theme.of(context).textTheme.displaySmall,
+          ),
           const SizedBox(height: 8),
-          Text('Public serial ${item.serialNumber} • ${item.state.key.replaceAll('_', ' ')}'),
+          Text(
+            'Public serial ${item.serialNumber} - ${item.state.key.replaceAll('_', ' ')}',
+          ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute<void>(
-                builder: (_) => ItemDetailScreen(controller: controller, itemId: item.id),
-              ));
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      ItemDetailScreen(controller: controller, itemId: item.id),
+                ),
+              );
             },
             child: const Text('View collectible'),
           ),
@@ -471,18 +1035,43 @@ class ExploreScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: <Widget>[
-        const TextField(decoration: InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Filter by artist, price, availability')),
+        const TextField(
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.search),
+            labelText: 'Filter by artist, price, availability',
+          ),
+        ),
         const SizedBox(height: 16),
+        if (controller.items.isEmpty)
+          const Card(
+            child: ListTile(
+              title: Text('No collectibles available yet.'),
+              subtitle: Text(
+                'Seed the catalog in Supabase to populate the marketplace.',
+              ),
+            ),
+          ),
         ...controller.items.map(
           (UniqueItem item) => Card(
             child: ListTile(
               title: Text(item.productName),
-              subtitle: Text('${item.serialNumber} • ${item.state.key.replaceAll('_', ' ')}'),
-              trailing: Text(item.askingPrice == null ? 'Held' : formatCurrency(item.askingPrice!)),
+              subtitle: Text(
+                '${item.serialNumber} - ${item.state.key.replaceAll('_', ' ')}',
+              ),
+              trailing: Text(
+                item.askingPrice == null
+                    ? 'Held'
+                    : formatCurrency(item.askingPrice!),
+              ),
               onTap: () {
-                Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => ItemDetailScreen(controller: controller, itemId: item.id),
-                ));
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ItemDetailScreen(
+                      controller: controller,
+                      itemId: item.id,
+                    ),
+                  ),
+                );
               },
             ),
           ),
@@ -493,7 +1082,11 @@ class ExploreScreen extends StatelessWidget {
 }
 
 class ItemDetailScreen extends StatelessWidget {
-  const ItemDetailScreen({required this.controller, required this.itemId, super.key});
+  const ItemDetailScreen({
+    required this.controller,
+    required this.itemId,
+    super.key,
+  });
 
   final CustomerController controller;
   final String itemId;
@@ -502,11 +1095,15 @@ class ItemDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final UniqueItem? item = controller.itemById(itemId);
     if (item == null) {
-      return const Scaffold(body: Center(child: Text('Collectible not found.')));
+      return const Scaffold(
+        body: Center(child: Text('Collectible not found.')),
+      );
     }
 
-    final Artwork artwork = controller.artworkFor(item);
+    final Artwork? artwork = controller.artworkFor(item);
+    final Artist? artist = controller.artistFor(item);
     final FeeBreakdown breakdown = controller.breakdownFor(item);
+    final List<OwnershipRecord> history = controller.historyFor(item.id);
     return Scaffold(
       appBar: AppBar(title: Text(item.productName)),
       body: ListView(
@@ -519,34 +1116,72 @@ class ItemDetailScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: OneOfOneTheme.gold.withOpacity(0.3)),
             ),
-            child: const Center(child: Text('Editorial garment image / human-made proof media')),
+            child: const Center(
+              child: Text('Editorial garment image / human-made proof media'),
+            ),
           ),
           const SizedBox(height: 16),
-          Text(artwork.title, style: Theme.of(context).textTheme.displaySmall),
+          Text(
+            artwork?.title ?? item.productName,
+            style: Theme.of(context).textTheme.displaySmall,
+          ),
           const SizedBox(height: 8),
-          Text('Artist: ${controller.artists.first.displayName}'),
+          Text('Artist: ${artist?.displayName ?? 'Unknown artist'}'),
           Text('Serial: ${item.serialNumber}'),
-          Text('Authenticity: verified human-made artwork'),
+          const Text('Authenticity: verified human-made artwork'),
           const SizedBox(height: 12),
-          Text(artwork.story),
+          Text(
+            artwork?.story ??
+                'Story and concept note will appear here once published.',
+          ),
           const SizedBox(height: 12),
-          Text('Provenance proof', style: Theme.of(context).textTheme.headlineSmall),
-          ...artwork.humanMadeProof.map((String proof) => ListTile(title: Text(proof))),
+          Text(
+            'Provenance proof',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          if (artwork == null || artwork.humanMadeProof.isEmpty)
+            const ListTile(title: Text('No proof assets published yet.')),
+          if (artwork != null)
+            ...artwork.humanMadeProof.map(
+              (String proof) => ListTile(title: Text(proof)),
+            ),
           const SizedBox(height: 12),
-          Text('Ownership history summary', style: Theme.of(context).textTheme.headlineSmall),
-          ...controller.historyFor(item.id).map(
+          Text(
+            'Ownership history summary',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          if (history.isEmpty)
+            const ListTile(title: Text('No verified ownership records yet.')),
+          ...history.map(
             (OwnershipRecord record) => ListTile(
               title: Text(record.ownerUserId),
-              subtitle: Text('Acquired ${record.acquiredAt.toIso8601String().split('T').first}'),
+              subtitle: Text(
+                'Acquired ${record.acquiredAt.toIso8601String().split('T').first}',
+              ),
             ),
           ),
           if (item.askingPrice != null) ...<Widget>[
             const SizedBox(height: 12),
-            Text('Resale financials', style: Theme.of(context).textTheme.headlineSmall),
-            ListTile(title: const Text('Asking price'), trailing: Text(formatCurrency(breakdown.grossAmount))),
-            ListTile(title: const Text('Platform fee'), trailing: Text(formatCurrency(breakdown.platformFee))),
-            ListTile(title: const Text('Artist royalty'), trailing: Text(formatCurrency(breakdown.artistRoyalty))),
-            ListTile(title: const Text('Seller payout'), trailing: Text(formatCurrency(breakdown.sellerPayout))),
+            Text(
+              'Resale financials',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            ListTile(
+              title: const Text('Asking price'),
+              trailing: Text(formatCurrency(breakdown.grossAmount)),
+            ),
+            ListTile(
+              title: const Text('Platform fee'),
+              trailing: Text(formatCurrency(breakdown.platformFee)),
+            ),
+            ListTile(
+              title: const Text('Artist royalty'),
+              trailing: Text(formatCurrency(breakdown.artistRoyalty)),
+            ),
+            ListTile(
+              title: const Text('Seller payout'),
+              trailing: Text(formatCurrency(breakdown.sellerPayout)),
+            ),
           ],
           const SizedBox(height: 16),
           Wrap(
@@ -556,19 +1191,29 @@ class ItemDetailScreen extends StatelessWidget {
               if (item.askingPrice != null && !item.state.isRestricted)
                 ElevatedButton(
                   onPressed: () async {
-                    final String message = await controller.buyResale(itemId: item.id);
+                    final String message = await controller.buyResale(
+                      itemId: item.id,
+                    );
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(message)));
                     }
                   },
                   child: const Text('Buy resale item'),
                 ),
-              if (item.currentOwnerUserId == controller.currentUserId && !item.state.isRestricted)
+              if (item.currentOwnerUserId == controller.currentUserId &&
+                  !item.state.isRestricted)
                 OutlinedButton(
                   onPressed: () async {
-                    final String message = await controller.createResale(itemId: item.id, priceCents: 225000);
+                    final String message = await controller.createResale(
+                      itemId: item.id,
+                      priceCents: 225000,
+                    );
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(message)));
                     }
                   },
                   child: const Text('Resell item'),
@@ -577,11 +1222,16 @@ class ItemDetailScreen extends StatelessWidget {
                 onPressed: () async {
                   final String message = await controller.openDispute(
                     itemId: item.id,
-                    reason: 'Collector requested review of ownership condition.',
-                    freeze: item.state == ItemState.stolenFlagged || item.state == ItemState.frozen,
+                    reason:
+                        'Collector requested review of ownership condition.',
+                    freeze:
+                        item.state == ItemState.stolenFlagged ||
+                        item.state == ItemState.frozen,
                   );
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(message)));
                   }
                 },
                 child: const Text('Report dispute'),
@@ -614,7 +1264,25 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final UniqueItem scanned = widget.controller.items[1];
+    if (widget.controller.items.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: const <Widget>[
+          Card(
+            child: ListTile(
+              title: Text('No authenticated items available to scan yet.'),
+              subtitle: Text(
+                'Mint and seed at least one item in Supabase to exercise the QR and claim flow.',
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final UniqueItem scanned = widget.controller.items.length > 1
+        ? widget.controller.items[1]
+        : widget.controller.items.first;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: <Widget>[
@@ -624,18 +1292,30 @@ class _ScanScreenState extends State<ScanScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text('Scan authenticity QR', style: Theme.of(context).textTheme.headlineSmall),
+                Text(
+                  'Scan authenticity QR',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
                 const SizedBox(height: 12),
-                const Text('V1 flow opens a privacy-safe authenticity route and requires a separate hidden claim code for ownership.'),
+                const Text(
+                  'V1 flow opens a privacy-safe authenticity route and requires a separate hidden claim code for ownership.',
+                ),
                 const SizedBox(height: 12),
                 Text('Detected item: ${scanned.serialNumber}'),
-                Text('Public status: ${scanned.state.key.replaceAll('_', ' ')}'),
+                Text(
+                  'Public status: ${scanned.state.key.replaceAll('_', ' ')}',
+                ),
                 const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                      builder: (_) => PublicAuthenticityPage(controller: widget.controller, itemId: scanned.id),
-                    ));
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => PublicAuthenticityPage(
+                          controller: widget.controller,
+                          itemId: scanned.id,
+                        ),
+                      ),
+                    );
                   },
                   child: const Text('Open public authenticity page'),
                 ),
@@ -655,7 +1335,9 @@ class _ScanScreenState extends State<ScanScreen> {
                       claimCode: _claimCodeController.text,
                     );
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(message)));
                     }
                     _claimCodeController.clear();
                   },
@@ -671,7 +1353,11 @@ class _ScanScreenState extends State<ScanScreen> {
 }
 
 class PublicAuthenticityPage extends StatelessWidget {
-  const PublicAuthenticityPage({required this.controller, required this.itemId, super.key});
+  const PublicAuthenticityPage({
+    required this.controller,
+    required this.itemId,
+    super.key,
+  });
 
   final CustomerController controller;
   final String itemId;
@@ -680,9 +1366,15 @@ class PublicAuthenticityPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final UniqueItem? item = controller.itemById(itemId);
     if (item == null) {
-      return const Scaffold(body: Center(child: Text('Authenticity record unavailable.')));
+      return const Scaffold(
+        body: Center(child: Text('Authenticity record unavailable.')),
+      );
     }
-    final Artwork artwork = controller.artworkFor(item);
+    final Artwork? artwork = controller.artworkFor(item);
+    final Artist? artist = controller.artistFor(item);
+    final int transferCount = controller.historyFor(item.id).isEmpty
+        ? 0
+        : controller.historyFor(item.id).length - 1;
     return Scaffold(
       appBar: AppBar(title: const Text('Authenticity verified')),
       body: ListView(
@@ -696,15 +1388,24 @@ class PublicAuthenticityPage extends StatelessWidget {
                 children: <Widget>[
                   const Text('Verified collectible status'),
                   const SizedBox(height: 8),
-                  Text(item.serialNumber, style: Theme.of(context).textTheme.displaySmall),
-                  Text(artwork.title),
-                  Text(controller.artists.first.displayName),
-                  Text('Marketplace status: ${item.state.key.replaceAll('_', ' ')}'),
+                  Text(
+                    item.serialNumber,
+                    style: Theme.of(context).textTheme.displaySmall,
+                  ),
+                  Text(artwork?.title ?? item.productName),
+                  Text(artist?.displayName ?? 'Unknown artist'),
+                  Text(
+                    'Marketplace status: ${item.state.key.replaceAll('_', ' ')}',
+                  ),
                   const SizedBox(height: 12),
-                  Text(artwork.story),
+                  Text(artwork?.story ?? 'Story unavailable.'),
                   const SizedBox(height: 12),
-                  const Text('Ownership visibility: current owner hidden, platform verification only.'),
-                  Text('Resale history summary: ${controller.historyFor(item.id).length - 1} verified transfer(s).'),
+                  const Text(
+                    'Ownership visibility: current owner hidden, platform verification only.',
+                  ),
+                  Text(
+                    'Resale history summary: $transferCount verified transfer(s).',
+                  ),
                 ],
               ),
             ),
@@ -731,14 +1432,18 @@ class VaultScreen extends StatelessWidget {
           const Card(
             child: ListTile(
               title: Text('No claimed collectibles yet.'),
-              subtitle: Text('Claim with the hidden packaged code after scanning a verified item.'),
+              subtitle: Text(
+                'Claim with the hidden packaged code after scanning a verified item.',
+              ),
             ),
           ),
         ...controller.vaultItems.map(
           (UniqueItem item) => Card(
             child: ListTile(
               title: Text(item.productName),
-              subtitle: Text('Certificate active • ${item.state.key.replaceAll('_', ' ')}'),
+              subtitle: Text(
+                'Certificate active - ${item.state.key.replaceAll('_', ' ')}',
+              ),
               trailing: Text(item.serialNumber),
             ),
           ),
@@ -758,18 +1463,31 @@ class ProfileScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: <Widget>[
-        Text('Collector profile', style: Theme.of(context).textTheme.displaySmall),
+        Text(
+          'Collector profile',
+          style: Theme.of(context).textTheme.displaySmall,
+        ),
         const SizedBox(height: 12),
         Card(
           child: ListTile(
-            title: const Text('Account settings'),
-            subtitle: Text('Signed in as ${controller.currentUserId}. Profile creation should call upsert_my_profile next.'),
+            title: Text(controller.currentDisplayName ?? 'Collector'),
+            subtitle: Text(
+              controller.currentUserEmail ?? controller.currentUserId,
+            ),
+            trailing: TextButton(
+              onPressed: () async {
+                await controller.signOut();
+              },
+              child: const Text('Sign out'),
+            ),
           ),
         ),
         const Card(
           child: ListTile(
             title: Text('Transaction history'),
-            subtitle: Text('Primary purchase, resale activity, royalty-aware transfers'),
+            subtitle: Text(
+              'Primary purchase, resale activity, royalty-aware transfers',
+            ),
           ),
         ),
         const Card(

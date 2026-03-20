@@ -1,12 +1,14 @@
-﻿import 'package:domain/domain.dart';
+import 'package:domain/domain.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../repositories/marketplace_repository.dart';
 
 class SupabaseMarketplaceRepository implements MarketplaceRepository {
-  SupabaseMarketplaceRepository({SupabaseClient? client, String? configurationError})
-      : _client = client,
-        _configurationError = configurationError;
+  SupabaseMarketplaceRepository({
+    SupabaseClient? client,
+    String? configurationError,
+  }) : _client = client,
+       _configurationError = configurationError;
 
   final SupabaseClient? _client;
   final String? _configurationError;
@@ -15,7 +17,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   List<Artwork> _artworks = <Artwork>[];
   List<UniqueItem> _items = <UniqueItem>[];
   List<Listing> _listings = <Listing>[];
-  Map<String, List<OwnershipRecord>> _histories = <String, List<OwnershipRecord>>{};
+  Map<String, List<OwnershipRecord>> _histories =
+      <String, List<OwnershipRecord>>{};
 
   @override
   List<Listing> activeListings() => List<Listing>.unmodifiable(_listings);
@@ -41,7 +44,10 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
-      return MarketplaceActionResult<UniqueItem>(success: false, message: configError);
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: configError,
+      );
     }
 
     final Listing? listing = _activeListingForItem(itemId);
@@ -88,7 +94,10 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
-      return MarketplaceActionResult<UniqueItem>(success: false, message: configError);
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: configError,
+      );
     }
 
     try {
@@ -121,7 +130,10 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
-      return MarketplaceActionResult<Listing>(success: false, message: configError);
+      return MarketplaceActionResult<Listing>(
+        success: false,
+        message: configError,
+      );
     }
 
     try {
@@ -174,7 +186,10 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
-      return MarketplaceActionResult<UniqueItem>(success: false, message: configError);
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: configError,
+      );
     }
 
     try {
@@ -190,7 +205,9 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       await refresh(userId: userId);
       return MarketplaceActionResult<UniqueItem>(
         success: true,
-        message: freeze ? 'Lost or stolen report submitted and item frozen.' : 'Dispute submitted for admin review.',
+        message: freeze
+            ? 'Lost or stolen report submitted and item frozen.'
+            : 'Dispute submitted for admin review.',
         data: itemById(itemId),
       );
     } on PostgrestException catch (error) {
@@ -203,7 +220,9 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
 
   @override
   List<OwnershipRecord> ownershipHistory(String itemId) =>
-      List<OwnershipRecord>.unmodifiable(_histories[itemId] ?? const <OwnershipRecord>[]);
+      List<OwnershipRecord>.unmodifiable(
+        _histories[itemId] ?? const <OwnershipRecord>[],
+      );
 
   @override
   Future<void> refresh({required String userId}) async {
@@ -230,7 +249,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
 
     List<dynamic> myCollectibleRows = <dynamic>[];
     if (currentUserId() != null) {
-      myCollectibleRows = (await _client!.rpc('get_my_collectibles')) as List<dynamic>;
+      myCollectibleRows =
+          (await _client!.rpc('get_my_collectibles')) as List<dynamic>;
     }
 
     _artists = artistRows
@@ -247,7 +267,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       final Map<String, dynamic> map = row as Map<String, dynamic>;
       final UniqueItem item = _catalogItemFromRow(map);
       mergedItems[item.id] = item;
-      if (map['listing_id'] != null && item.state == ItemState.listedForResale) {
+      if (map['listing_id'] != null &&
+          item.state == ItemState.listedForResale) {
         publicListings.add(
           Listing(
             id: map['listing_id'].toString(),
@@ -260,22 +281,34 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       }
     }
 
-    final Map<String, List<OwnershipRecord>> histories = <String, List<OwnershipRecord>>{};
+    final Map<String, List<OwnershipRecord>> histories =
+        <String, List<OwnershipRecord>>{};
     for (final dynamic row in myCollectibleRows) {
       final Map<String, dynamic> map = row as Map<String, dynamic>;
-      final UniqueItem item = _ownedItemFromRow(map, mergedItems[map['item_id'].toString()]);
+      final UniqueItem item = _ownedItemFromRow(
+        map,
+        mergedItems[map['item_id'].toString()],
+      );
       mergedItems[item.id] = item;
-      final List<dynamic> historyRows = await _client!.rpc(
-        'get_my_item_history',
-        params: <String, dynamic>{'p_item_id': item.id},
-      ) as List<dynamic>;
+      final List<dynamic> historyRows =
+          await _client!.rpc(
+                'get_my_item_history',
+                params: <String, dynamic>{'p_item_id': item.id},
+              )
+              as List<dynamic>;
       histories[item.id] = historyRows
-          .map((dynamic historyRow) => _historyFromRow(item.id, historyRow as Map<String, dynamic>))
+          .map(
+            (dynamic historyRow) =>
+                _historyFromRow(item.id, historyRow as Map<String, dynamic>),
+          )
           .toList();
     }
 
     _items = mergedItems.values.toList()
-      ..sort((UniqueItem a, UniqueItem b) => a.serialNumber.compareTo(b.serialNumber));
+      ..sort(
+        (UniqueItem a, UniqueItem b) =>
+            a.serialNumber.compareTo(b.serialNumber),
+      );
     _listings = publicListings;
     _histories = histories;
   }
@@ -309,7 +342,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }
 
   Artwork _artworkFromRow(Map<String, dynamic> row) {
-    final List<dynamic> proof = row['provenance_proof'] as List<dynamic>? ?? const <dynamic>[];
+    final List<dynamic> proof =
+        row['provenance_proof'] as List<dynamic>? ?? const <dynamic>[];
     final String? createdOn = row['creation_date'] as String?;
     return Artwork(
       id: row['id'].toString(),
@@ -357,7 +391,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       state: itemStateFromKey(row['state'].toString()),
       currentOwnerUserId: currentUserId(),
       claimCodeConsumed: true,
-      askingPrice: (row['asking_price_cents'] as num?)?.toInt() ?? fallback?.askingPrice,
+      askingPrice:
+          (row['asking_price_cents'] as num?)?.toInt() ?? fallback?.askingPrice,
     );
   }
 
@@ -372,7 +407,9 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     if (message.contains('Claim code already used')) {
       return 'This claim code has already been used.';
     }
-    if (message.contains('Only the recorded owner, buyer, or admin can open a dispute')) {
+    if (message.contains(
+      'Only the recorded owner, buyer, or admin can open a dispute',
+    )) {
       return 'Only the verified owner or buyer can submit this dispute.';
     }
     return message;
@@ -385,7 +422,3 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     return null;
   }
 }
-
-
-
-

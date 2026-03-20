@@ -65,11 +65,12 @@ This records the captured payment, marks the order paid, finalizes the ownership
 `supabase/seed/seed.sql` seeds collectible catalog and authenticity data only. It intentionally does not insert into `auth.users`.
 
 ## Current customer app integration
-- The customer app now targets Supabase-backed reads and RPCs through its repository/service architecture.
+- The customer app now uses real Supabase Auth session state plus Supabase-backed reads and RPCs through its repository/service architecture.
 - It keeps hidden claim codes out of public pages and only sends claim codes to the claim RPC.
 - Critical item state is refreshed from Supabase after claim, resale listing, checkout, and dispute actions.
 
 ## Remaining app integration work
-- Build real sign-in/sign-up/password-reset UI on top of the live Supabase client session.
 - Replace mock payment capture with a real payment provider when V1 is ready for live checkout.
+- Add deployed password-reset redirect URLs and deep-link handling for production mobile reset flows.
 - Extend admin UI to call the matching admin RPCs and operational reads.
+

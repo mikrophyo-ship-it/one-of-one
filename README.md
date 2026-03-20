@@ -1,4 +1,4 @@
-# One of One
+﻿# One of One
 
 One of One is a premium collectible fashion marketplace for original human-made artwork garments with platform-authoritative ownership, authenticity verification, and controlled on-platform resale.
 
@@ -46,7 +46,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 - V1 keeps app-side state management simple with `ChangeNotifier` to reduce ceremony while the business rules stay centralized in shared domain and backend layers.
 - QR rendering/scanning is demonstrated as a product flow and public-route contract without binding the codebase to a specific scanner plugin yet.
 - Mock payment capture is still used in the customer app while the backend ownership and ledger path is now real.
-- The app now targets a real Supabase repository, but full auth-screen UX and production payment integration still need another pass.
+- The customer app now uses real Supabase Auth plus a live Supabase repository, but production payment integration and reset deep-link setup still need another pass.
 
 ## Deferred to V2
 - NFC and Bluetooth transfer verification
@@ -60,3 +60,4 @@ One of One is a premium collectible fashion marketplace for original human-made 
 ## Notes
 - Ownership, listing, dispute, payment capture, and transfer authority are enforced in Supabase RPCs rather than trusted client state.
 - The current repository still needs full Flutter platform scaffolding and broader analyzer/test verification in an unrestricted environment.
+
