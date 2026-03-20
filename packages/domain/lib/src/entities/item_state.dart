@@ -13,6 +13,22 @@ enum ItemState {
   archived,
 }
 
+ItemState itemStateFromKey(String key) => switch (key) {
+      'drafted' => ItemState.drafted,
+      'minted' => ItemState.minted,
+      'in_inventory' => ItemState.inInventory,
+      'sold_unclaimed' => ItemState.soldUnclaimed,
+      'claimed' => ItemState.claimed,
+      'listed_for_resale' => ItemState.listedForResale,
+      'sale_pending' => ItemState.salePending,
+      'transferred' => ItemState.transferred,
+      'disputed' => ItemState.disputed,
+      'stolen_flagged' => ItemState.stolenFlagged,
+      'frozen' => ItemState.frozen,
+      'archived' => ItemState.archived,
+      _ => throw ArgumentError('Unknown item state key: $key'),
+    };
+
 extension ItemStateX on ItemState {
   String get key => switch (this) {
         ItemState.drafted => 'drafted',

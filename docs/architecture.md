@@ -4,7 +4,7 @@
 - `apps/customer_app`: mobile-first Flutter customer experience for authentication, discovery, authenticity scan, claiming, vault, resale, disputes, and profile.
 - `apps/admin_app`: Flutter web-first operations console for artists, artworks, minting, inventory, disputes, audits, and settings.
 - `packages/domain`: pure Dart domain entities and business rules, including item state transitions and resale fee logic.
-- `packages/data`: repository contracts and demo data for local development without a live backend.
+- `packages/data`: repository contracts plus a Supabase-backed marketplace repository for live reads and RPC-driven ownership actions.
 - `packages/services`: payment abstraction and backend-facing payload/service boundaries.
 - `packages/core_ui`: shared black, gold, and ivory design language.
 - `packages/utils`: validation and formatting helpers.
@@ -15,6 +15,7 @@
 - Critical ownership and resale rules live in `packages/domain` and are mirrored by SQL functions in Supabase so the client never becomes the source of truth.
 - Payment handling is abstracted behind `PaymentProvider`; V1 uses a mock provider but the interface is stable for Stripe/Adyen/etc. later.
 - Public authenticity and private ownership claim are split: QR opens a public route, while hidden claim code validation happens through a protected server-side function.
+- The customer app now prefers the Supabase repository and refreshes catalog, owned collectibles, and ownership history from backend views and RPCs after claim, resale, checkout, and dispute actions.
 - Unique garments are modeled as `unique_items`, not generic stock, so provenance, state, and resale history attach to the collectible unit itself.
 
 ## Backend design
@@ -22,7 +23,8 @@
 - `handle_auth_user_created` mirrors Auth signups into `public.users` automatically.
 - `upsert_my_profile`, `claim_item_ownership`, `create_resale_listing`, `create_resale_order`, `record_resale_payment_and_transfer`, `open_dispute`, and `admin_flag_item_status` are the main RPC entry points for V1.
 - `public_authenticity_items` and `get_public_authenticity_by_qr_token` provide a privacy-safe authenticity surface.
-- `public_marketplace_listings` provides a sanitized public shopping surface without exposing hidden claim data or owner identity.
+- `public_marketplace_listings` and `public_collectible_catalog` provide sanitized public shopping surfaces without exposing hidden claim data or owner identity.
+- `get_my_collectibles()` and `get_my_item_history(item_id)` provide owner-safe authenticated reads for vault and provenance refresh.
 - Disputed, stolen, and frozen states are blocked centrally before claim, listing, or transfer can proceed.
 - Ledger tables split seller payout, artist royalty, and platform fee so resale economics stay auditable.
 

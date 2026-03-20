@@ -3,7 +3,12 @@ import 'package:domain/domain.dart';
 import '../repositories/marketplace_repository.dart';
 
 class DemoCatalog implements MarketplaceRepository {
-  DemoCatalog({MarketplaceRules? rules}) : _rules = rules ?? const MarketplaceRules(platformFeeBps: 1000, defaultRoyaltyBps: 1200) {
+  DemoCatalog({MarketplaceRules? rules})
+      : _rules = rules ??
+            const MarketplaceRules(
+              platformFeeBps: 1000,
+              defaultRoyaltyBps: 1200,
+            ) {
     _items = <UniqueItem>[
       const UniqueItem(
         id: 'item_afterglow_01',
@@ -78,14 +83,16 @@ class DemoCatalog implements MarketplaceRepository {
     displayName: 'Maya Vale',
     slug: 'maya-vale',
     royaltyBps: 1200,
-    authenticityStatement: 'Created and finished by Maya Vale in-studio, without generative tooling.',
+    authenticityStatement:
+        'Created and finished by Maya Vale in-studio, without generative tooling.',
   );
 
   static final Artwork artwork = Artwork(
     id: 'artwork_afterglow',
     artistId: maya.id,
     title: 'Afterglow No. 01',
-    story: 'A hand-painted study of nightlife reflections translated into a single collectible garment.',
+    story:
+        'A hand-painted study of nightlife reflections translated into a single collectible garment.',
     humanMadeProof: <String>[
       'Graphite composition studies',
       'Studio paint process stills',
@@ -114,12 +121,13 @@ class DemoCatalog implements MarketplaceRepository {
   List<Artwork> artworks() => <Artwork>[artwork];
 
   @override
-  MarketplaceActionResult<UniqueItem> buyResaleItem({
+  Future<MarketplaceActionResult<UniqueItem>> buyResaleItem({
     required String itemId,
     required String buyerUserId,
     required String providerReference,
-  }) {
-    final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
+  }) async {
+    final int itemIndex =
+        _items.indexWhere((UniqueItem item) => item.id == itemId);
     if (itemIndex == -1) {
       return const MarketplaceActionResult<UniqueItem>(
         success: false,
@@ -128,7 +136,9 @@ class DemoCatalog implements MarketplaceRepository {
     }
 
     final UniqueItem item = _items[itemIndex];
-    final int listingIndex = _listings.indexWhere((Listing listing) => listing.itemId == itemId && listing.isActive);
+    final int listingIndex = _listings.indexWhere(
+      (Listing listing) => listing.itemId == itemId && listing.isActive,
+    );
     if (listingIndex == -1) {
       return const MarketplaceActionResult<UniqueItem>(
         success: false,
@@ -175,17 +185,18 @@ class DemoCatalog implements MarketplaceRepository {
 
     return MarketplaceActionResult<UniqueItem>(
       success: true,
-      message: 'Payment captured with reference $providerReference. Ownership transferred on-platform.',
+      message:
+          'Payment captured with reference $providerReference. Ownership transferred on-platform.',
       data: transferred,
     );
   }
 
   @override
-  MarketplaceActionResult<UniqueItem> claimOwnership({
+  Future<MarketplaceActionResult<UniqueItem>> claimOwnership({
     required String itemId,
     required String claimCode,
     required String userId,
-  }) {
+  }) async {
     final int index = _items.indexWhere((UniqueItem item) => item.id == itemId);
     if (index == -1) {
       return const MarketplaceActionResult<UniqueItem>(
@@ -224,17 +235,18 @@ class DemoCatalog implements MarketplaceRepository {
 
     return MarketplaceActionResult<UniqueItem>(
       success: true,
-      message: 'Ownership claim approved and refreshed from the server contract.',
+      message:
+          'Ownership claim approved and refreshed from the server contract.',
       data: claimed,
     );
   }
 
   @override
-  MarketplaceActionResult<Listing> createResaleListing({
+  Future<MarketplaceActionResult<Listing>> createResaleListing({
     required String itemId,
     required String userId,
     required int priceCents,
-  }) {
+  }) async {
     final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
     if (itemIndex == -1) {
       return const MarketplaceActionResult<Listing>(
@@ -256,7 +268,9 @@ class DemoCatalog implements MarketplaceRepository {
         message: 'Only the recorded current owner can list this collectible.',
       );
     }
-    if (_listings.any((Listing listing) => listing.itemId == itemId && listing.isActive)) {
+    if (_listings.any(
+      (Listing listing) => listing.itemId == itemId && listing.isActive,
+    )) {
       return const MarketplaceActionResult<Listing>(
         success: false,
         message: 'An active listing already exists for this collectible.',
@@ -284,6 +298,9 @@ class DemoCatalog implements MarketplaceRepository {
   }
 
   @override
+  String? currentUserId() => 'user_collector_1';
+
+  @override
   List<Artist> featuredArtists() => const <Artist>[maya];
 
   @override
@@ -300,12 +317,12 @@ class DemoCatalog implements MarketplaceRepository {
   List<UniqueItem> items() => List<UniqueItem>.unmodifiable(_items);
 
   @override
-  MarketplaceActionResult<UniqueItem> openDispute({
+  Future<MarketplaceActionResult<UniqueItem>> openDispute({
     required String itemId,
     required String userId,
     required String reason,
     required bool freeze,
-  }) {
+  }) async {
     final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
     if (itemIndex == -1) {
       return const MarketplaceActionResult<UniqueItem>(
@@ -318,7 +335,8 @@ class DemoCatalog implements MarketplaceRepository {
     if (item.currentOwnerUserId != null && item.currentOwnerUserId != userId) {
       return const MarketplaceActionResult<UniqueItem>(
         success: false,
-        message: 'Only the recorded owner can raise this dispute in the demo workflow.',
+        message:
+            'Only the recorded owner can raise this dispute in the demo workflow.',
       );
     }
 
@@ -337,9 +355,13 @@ class DemoCatalog implements MarketplaceRepository {
   }
 
   @override
-  List<OwnershipRecord> ownershipHistory(String itemId) => List<OwnershipRecord>.unmodifiable(
+  List<OwnershipRecord> ownershipHistory(String itemId) =>
+      List<OwnershipRecord>.unmodifiable(
         _ownershipRecords.where((OwnershipRecord record) => record.itemId == itemId),
       );
+
+  @override
+  Future<void> refresh({required String userId}) async {}
 
   void _closeOpenOwnershipRecord(String itemId) {
     for (int i = 0; i < _ownershipRecords.length; i++) {

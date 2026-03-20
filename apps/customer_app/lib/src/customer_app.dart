@@ -1,8 +1,9 @@
-﻿import 'package:core_ui/core_ui.dart';
+import 'package:core_ui/core_ui.dart';
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
 import 'package:flutter/material.dart';
 import 'package:services/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:utils/utils.dart';
 
 class OneOfOneCustomerApp extends StatelessWidget {
@@ -34,7 +35,15 @@ class _CustomerRootState extends State<CustomerRoot> {
   @override
   void initState() {
     super.initState();
-    repository = DemoCatalog();
+    if (const String.fromEnvironment('SUPABASE_URL').isNotEmpty &&
+        const String.fromEnvironment('SUPABASE_ANON_KEY').isNotEmpty) {
+      repository = SupabaseMarketplaceRepository(client: Supabase.instance.client);
+    } else {
+      repository = SupabaseMarketplaceRepository(
+        configurationError:
+            'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.',
+      );
+    }
     workflowService = MarketplaceWorkflowService(
       repository: repository,
       paymentProvider: const MockPaymentProvider(),
@@ -180,9 +189,19 @@ class CustomerController extends ChangeNotifier {
     );
   }
 
-  void signIn() {
+  Future<void> signIn() async {
+    isBusy = true;
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    currentUserId = _repository.currentUserId() ?? 'guest_preview';
+    await _repository.refresh(userId: currentUserId);
     isAuthenticated = true;
-    statusMessage = 'Signed in. Critical ownership actions now route through the backend workflow layer.';
+    isBusy = false;
+    statusMessage = currentUserId == 'guest_preview'
+        ? 'Preview mode loaded. Sign into Supabase Auth to claim, list, buy, or dispute.'
+        : 'Marketplace refreshed from Supabase for the active collector session.';
     notifyListeners();
   }
 
@@ -238,7 +257,7 @@ class CustomerController extends ChangeNotifier {
     return _runAction<UniqueItem>(
       operation: () => _workflowService.buyResaleItem(
         itemId: itemId,
-        buyerUserId: 'user_buyer_v1',
+        buyerUserId: currentUserId,
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
@@ -327,12 +346,14 @@ class AuthScreen extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: controller.signIn,
+                        onPressed: () async {
+                          await controller.signIn();
+                        },
                         child: const Text('Sign In'),
                       ),
                     ),
-                    TextButton(onPressed: controller.signIn, child: const Text('Create account')),
-                    TextButton(onPressed: controller.signIn, child: const Text('Forgot password')),
+                    TextButton(onPressed: () async { await controller.signIn(); }, child: const Text('Create account')),
+                    TextButton(onPressed: () async { await controller.signIn(); }, child: const Text('Forgot password')),
                   ],
                 ),
               ),
@@ -761,9 +782,3 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-

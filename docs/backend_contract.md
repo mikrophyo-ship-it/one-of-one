@@ -8,6 +8,7 @@ Use these for anonymous or broad customer-facing reads:
 - `public.public_authenticity_items`
 - `public.get_public_authenticity_by_qr_token(text)`
 - `public.public_marketplace_listings`
+- `public.public_collectible_catalog`
 
 These surfaces intentionally avoid exposing:
 - hidden claim codes
@@ -19,6 +20,10 @@ These surfaces intentionally avoid exposing:
 ## Authenticated customer RPCs
 After a real Auth signup, call:
 - `public.upsert_my_profile(display_name, username, avatar_url)`
+
+Owner-safe authenticated reads:
+- `public.get_my_collectibles()`
+- `public.get_my_item_history(item_id)`
 
 For ownership and resale lifecycle:
 - `public.claim_item_ownership(item_id, claim_code)`
@@ -35,16 +40,18 @@ For ownership and resale lifecycle:
 1. A real user signs up through Supabase Auth.
 2. Auth trigger `handle_auth_user_created` creates the corresponding `public.users` row.
 3. The app calls `upsert_my_profile(...)` to create the user profile.
-4. A buyer with a hidden claim code calls `claim_item_ownership(...)`.
+4. The customer app refreshes public catalog data from `public_collectible_catalog` and the authenticated collector state from `get_my_collectibles()`.
+5. A buyer with a hidden claim code calls `claim_item_ownership(...)`.
 This marks the claim code as consumed, records the owner, and creates the open ownership record.
-5. The current owner calls `create_resale_listing(...)`.
+6. The current owner calls `create_resale_listing(...)`.
 This is allowed only when the user is the recorded current owner and the item is in an eligible state.
-6. Another user calls `create_resale_order(listing_id)`.
+7. Another user calls `create_resale_order(listing_id)`.
 This locks the listing into `sale_pending` and creates the resale order/order_item rows.
-7. After payment success, the backend calls `record_resale_payment_and_transfer(...)`.
+8. After payment success, the backend calls `record_resale_payment_and_transfer(...)`.
 This records the captured payment, marks the order paid, finalizes the ownership transfer, and writes payout, royalty, and platform fee ledgers.
-8. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing/transfer.
-9. Admin can force states like `stolen_flagged`, `frozen`, `disputed`, `claimed`, or `archived` through `admin_flag_item_status(...)`.
+9. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing/transfer.
+10. Owned-item history is refreshed through `get_my_item_history(item_id)`.
+11. Admin can force states like `stolen_flagged`, `frozen`, `disputed`, `claimed`, or `archived` through `admin_flag_item_status(...)`.
 
 ## Local development flow
 1. Apply migrations and `supabase/seed/seed.sql`.
@@ -57,7 +64,12 @@ This records the captured payment, marks the order paid, finalizes the ownership
 ## Seed notes
 `supabase/seed/seed.sql` seeds collectible catalog and authenticity data only. It intentionally does not insert into `auth.users`.
 
+## Current customer app integration
+- The customer app now targets Supabase-backed reads and RPCs through its repository/service architecture.
+- It keeps hidden claim codes out of public pages and only sends claim codes to the claim RPC.
+- Critical item state is refreshed from Supabase after claim, resale listing, checkout, and dispute actions.
+
 ## Remaining app integration work
-- Replace in-memory customer claim/list/buy/dispute logic with these RPC calls.
-- Replace admin placeholder actions with real item status, dispute, and role-management calls.
-- Add app-level repository/services for the public views and authenticated RPCs.
+- Build real sign-in/sign-up/password-reset UI on top of the live Supabase client session.
+- Replace mock payment capture with a real payment provider when V1 is ready for live checkout.
+- Extend admin UI to call the matching admin RPCs and operational reads.
