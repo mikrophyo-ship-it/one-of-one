@@ -1,5 +1,6 @@
-﻿library domain;
+library domain;
 
+export 'src/entities/admin_operations.dart';
 export 'src/entities/artist.dart';
 export 'src/entities/artwork.dart';
 export 'src/entities/claim_result.dart';

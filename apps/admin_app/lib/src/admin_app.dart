@@ -1,8 +1,21 @@
+import 'dart:async';
+
 import 'package:core_ui/core_ui.dart';
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
 import 'package:flutter/material.dart';
+import 'package:services/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:utils/utils.dart';
+
+import 'features/audit/audit_panel.dart';
+import 'features/customers/customers_panel.dart';
+import 'features/dashboard/overview_panel.dart';
+import 'features/disputes/disputes_panel.dart';
+import 'features/listings/listings_panel.dart';
+import 'features/orders/orders_panel.dart';
+import 'features/settings/settings_panel.dart';
+import 'widgets/admin_shared.dart';
 
 class OneOfOneAdminApp extends StatelessWidget {
   const OneOfOneAdminApp({super.key});
@@ -26,15 +39,8 @@ class AdminShell extends StatefulWidget {
 }
 
 class _AdminShellState extends State<AdminShell> {
-  int index = 0;
-  final DemoCatalog catalog = DemoCatalog();
-
-  static const List<String> labels = <String>[
+  static const List<String> _labels = <String>[
     'Overview',
-    'Artists',
-    'Artworks',
-    'Minting',
-    'Inventory',
     'Customers',
     'Orders',
     'Listings',
@@ -43,31 +49,145 @@ class _AdminShellState extends State<AdminShell> {
     'Settings',
   ];
 
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final GlobalKey<FormState> _authFormKey = GlobalKey<FormState>();
+
+  late final SupabaseAuthService _authService;
+  late final AdminOperationsService _adminService;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  int _index = 0;
+  bool _authBusy = false;
+  bool _refreshing = false;
+  String? _bannerMessage;
+  bool _bannerIsError = false;
+  AdminOperationsSnapshot? _snapshot;
+
+  @override
+  void initState() {
+    super.initState();
+    final SupabaseClient? client = Supabase.instance.client;
+    _authService = SupabaseAuthService(
+      client: client,
+      configurationError: _configurationError(),
+    );
+    _adminService = AdminOperationsService(
+      repository: SupabaseAdminOperationsRepository(
+        client: client,
+        configurationError: _configurationError(),
+      ),
+    );
+    _snapshot = _adminService.snapshot();
+    _authSubscription = _authService.authStateChanges().listen((AuthState _) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _bannerMessage = null;
+      });
+      if (_authService.currentSession != null) {
+        _refreshAdminData();
+      } else {
+        setState(() {
+          _snapshot = null;
+        });
+      }
+    });
+    if (_authService.currentSession != null) {
+      _refreshAdminData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_authService.isConfigured) {
+      return ConfigState(message: _configurationError()!);
+    }
+
+    if (_authService.currentSession == null) {
+      return AdminSignInView(
+        formKey: _authFormKey,
+        emailController: _emailController,
+        passwordController: _passwordController,
+        isBusy: _authBusy,
+        message: _bannerMessage,
+        messageIsError: _bannerIsError,
+        onSubmit: _signIn,
+      );
+    }
+
     final List<Widget> views = <Widget>[
-      OverviewPanel(catalog: catalog),
-      ArtistsPanel(catalog: catalog),
-      ArtworksPanel(catalog: catalog),
-      MintingPanel(catalog: catalog),
-      InventoryPanel(catalog: catalog),
-      const GenericPanel(title: 'Customer management', description: 'Review account status, ownership, and privacy-safe activity history.'),
-      const GenericPanel(title: 'Order management', description: 'Track primary and resale orders, payment state, and payout readiness.'),
-      const GenericPanel(title: 'Listing moderation', description: 'Moderate resale listings and automatically suppress restricted items.'),
-      const GenericPanel(title: 'Dispute management', description: 'Review disputes, hold payout, and escalate stolen or frozen state controls.'),
-      const GenericPanel(title: 'Audit log viewer', description: 'Inspect claims, state changes, payout holds, and admin interventions.'),
-      const SettingsPanel(),
+      OverviewPanel(snapshot: _snapshot),
+      CustomersPanel(
+        customers: _snapshot?.customers ?? const <AdminCustomerRecord>[],
+        onSetRole: _setUserRole,
+      ),
+      OrdersPanel(orders: _snapshot?.orders ?? const <AdminOrderRecord>[]),
+      ListingsPanel(
+        listings: _snapshot?.listings ?? const <AdminListingRecord>[],
+        onModerateListing: _moderateListing,
+        onFlagItem: _flagItem,
+      ),
+      DisputesPanel(
+        disputes: _snapshot?.disputes ?? const <AdminDisputeRecord>[],
+        onUpdateDispute: _updateDispute,
+        onFlagItem: _flagItem,
+      ),
+      AuditPanel(audits: _snapshot?.audits ?? const <AdminAuditRecord>[]),
+      SettingsPanel(settings: _snapshot?.settings, onSave: _saveSettings),
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('ONE OF ONE ADMIN')),
+      appBar: AppBar(
+        title: const Text('ONE OF ONE ADMIN'),
+        actions: <Widget>[
+          TextButton.icon(
+            onPressed: _refreshing ? null : _refreshAdminData,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: const Text('Refresh'),
+          ),
+          const SizedBox(width: 12),
+          TextButton.icon(
+            onPressed: _authBusy ? null : _signOut,
+            icon: const Icon(Icons.logout),
+            label: const Text('Sign out'),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
       body: Row(
         children: <Widget>[
           NavigationRail(
-            selectedIndex: index,
-            onDestinationSelected: (int value) => setState(() => index = value),
-            destinations: labels
-                .map((String label) => NavigationRailDestination(icon: const Icon(Icons.chevron_right), label: Text(label)))
+            selectedIndex: _index,
+            onDestinationSelected: (int value) {
+              setState(() {
+                _index = value;
+              });
+            },
+            labelType: NavigationRailLabelType.all,
+            minWidth: 88,
+            destinations: _labels
+                .map(
+                  (String label) => NavigationRailDestination(
+                    icon: const Icon(Icons.chevron_right),
+                    label: Text(label),
+                  ),
+                )
                 .toList(),
           ),
           const VerticalDivider(width: 1),
@@ -80,187 +200,281 @@ class _AdminShellState extends State<AdminShell> {
                   end: Alignment.bottomRight,
                 ),
               ),
-              child: views[index],
+              child: Column(
+                children: <Widget>[
+                  if (_bannerMessage != null)
+                    BannerStrip(
+                      message: _bannerMessage!,
+                      isError: _bannerIsError,
+                      onDismiss: () {
+                        setState(() {
+                          _bannerMessage = null;
+                        });
+                      },
+                    ),
+                  Expanded(
+                    child: _snapshot == null && _refreshing
+                        ? const Center(child: CircularProgressIndicator())
+                        : views[_index],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class OverviewPanel extends StatelessWidget {
-  const OverviewPanel({required this.catalog, super.key});
+  Future<void> _refreshAdminData() async {
+    setState(() {
+      _refreshing = true;
+    });
+    final MarketplaceActionResult<AdminOperationsSnapshot> result =
+        await _adminService.refresh();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _refreshing = false;
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+      if (result.success) {
+        _snapshot = result.data;
+      }
+    });
+  }
 
-  final DemoCatalog catalog;
+  Future<void> _signIn() async {
+    if (!_authFormKey.currentState!.validate()) {
+      return;
+    }
+    setState(() {
+      _authBusy = true;
+      _bannerMessage = null;
+    });
 
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: <Widget>[
-        Text('Operational overview', style: Theme.of(context).textTheme.displaySmall),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: <Widget>[
-            _MetricCard(title: 'Sales', value: formatCurrency(520000)),
-            _MetricCard(title: 'Resale volume', value: formatCurrency(180000)),
-            _MetricCard(title: 'Royalties', value: formatCurrency(21600)),
-            _MetricCard(title: 'Open disputes', value: '2'),
+    final AuthActionResult result = await _authService.signInWithPassword(
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _authBusy = false;
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+    if (result.success) {
+      await _refreshAdminData();
+    }
+  }
+
+  Future<void> _signOut() async {
+    await _authService.signOut();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = null;
+      _bannerMessage = 'Admin session ended.';
+      _bannerIsError = false;
+    });
+  }
+
+  Future<void> _setUserRole(AdminCustomerRecord customer, String role) async {
+    final MarketplaceActionResult<AdminCustomerRecord> result =
+        await _adminService.setUserRole(userId: customer.userId, role: role);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _moderateListing(
+    AdminListingRecord listing,
+    String action,
+  ) async {
+    final String? note = await _promptForNote(
+      title: action == 'restore'
+          ? 'Restore listing'
+          : action == 'cancel'
+          ? 'Cancel listing'
+          : 'Block listing',
+      hint: 'Add an internal moderation note',
+      confirmLabel: action == 'restore' ? 'Restore' : 'Confirm',
+    );
+    if (note == null) {
+      return;
+    }
+    final MarketplaceActionResult<AdminListingRecord> result =
+        await _adminService.moderateListing(
+          listingId: listing.listingId,
+          action: action,
+          note: note,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _updateDispute(AdminDisputeRecord dispute) async {
+    final DisputeActionInput? input = await promptForDisputeAction(
+      context,
+      dispute,
+    );
+    if (input == null) {
+      return;
+    }
+    final MarketplaceActionResult<AdminDisputeRecord> result =
+        await _adminService.updateDisputeStatus(
+          disputeId: dispute.disputeId,
+          status: input.status,
+          note: input.note,
+          releaseItem: input.releaseItem,
+          releaseTargetState: input.releaseTargetState,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _flagItem(
+    String itemId,
+    String targetState,
+    String title,
+  ) async {
+    final String? note = await _promptForNote(
+      title: title,
+      hint: 'Add an internal note for this item action',
+      confirmLabel: 'Apply',
+    );
+    if (note == null) {
+      return;
+    }
+    final MarketplaceActionResult<void> result = await _adminService
+        .flagItemStatus(itemId: itemId, targetState: targetState, note: note);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _saveSettings(
+    int platformFeeBps,
+    int defaultRoyaltyBps,
+    Map<String, dynamic> marketplaceRules,
+    Map<String, dynamic> brandSettings,
+  ) async {
+    final MarketplaceActionResult<PlatformSettingsSnapshot> result =
+        await _adminService.updateSettings(
+          platformFeeBps: platformFeeBps,
+          defaultRoyaltyBps: defaultRoyaltyBps,
+          marketplaceRules: marketplaceRules,
+          brandSettings: brandSettings,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<String?> _promptForNote({
+    required String title,
+    required String hint,
+    required String confirmLabel,
+  }) async {
+    final TextEditingController controller = TextEditingController();
+    final String? value = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1712),
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            minLines: 3,
+            maxLines: 5,
+            decoration: InputDecoration(hintText: hint),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
+              child: Text(confirmLabel),
+            ),
           ],
-        ),
-        const SizedBox(height: 20),
-        const GenericPanel(
-          title: 'Marketplace guardrails',
-          description: 'Ownership stays server-authoritative. Off-platform sales are not recognized. Restricted items cannot be listed, sold, transferred, or claimed.',
-        ),
-      ],
+        );
+      },
     );
+    controller.dispose();
+    return value;
+  }
+
+  String? _configurationError() {
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    if (url.isEmpty || anonKey.isEmpty) {
+      return 'Provide SUPABASE_URL and SUPABASE_ANON_KEY to run the admin console.';
+    }
+    return null;
   }
 }
 
-class ArtistsPanel extends StatelessWidget {
-  const ArtistsPanel({required this.catalog, super.key});
+class ConfigState extends StatelessWidget {
+  const ConfigState({required this.message, super.key});
 
-  final DemoCatalog catalog;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: <Widget>[
-        Text('Artists', style: Theme.of(context).textTheme.displaySmall),
-        const SizedBox(height: 12),
-        ...catalog.featuredArtists().map(
-          (Artist artist) => Card(
-            child: ListTile(
-              title: Text(artist.displayName),
-              subtitle: Text(artist.authenticityStatement),
-              trailing: Text('${artist.royaltyBps / 100}% royalty'),
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Admin configuration required',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(message),
+                ],
+              ),
             ),
-          ),
-        ),
-        const GenericPanel(
-          title: 'Payout configuration',
-          description: 'Admin controls default and per-artist royalty settings separately from platform fee policy.',
-        ),
-      ],
-    );
-  }
-}
-
-class ArtworksPanel extends StatelessWidget {
-  const ArtworksPanel({required this.catalog, super.key});
-
-  final DemoCatalog catalog;
-
-  @override
-  Widget build(BuildContext context) {
-    final Artwork artwork = catalog.artworks().first;
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: <Widget>[
-        Text('Artwork management', style: Theme.of(context).textTheme.displaySmall),
-        Card(
-          child: ListTile(
-            title: Text(artwork.title),
-            subtitle: Text(artwork.story),
-          ),
-        ),
-        ...artwork.humanMadeProof.map((String media) => ListTile(title: Text(media))),
-      ],
-    );
-  }
-}
-
-class MintingPanel extends StatelessWidget {
-  const MintingPanel({required this.catalog, super.key});
-
-  final DemoCatalog catalog;
-
-  @override
-  Widget build(BuildContext context) {
-    final UniqueItem item = catalog.items().first;
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: <Widget>[
-        Text('Product and unique item minting', style: Theme.of(context).textTheme.displaySmall),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            title: const Text('Minted unit'),
-            subtitle: Text('${item.productName} • ${item.serialNumber}'),
-            trailing: const Text('QR + hidden claim code generated'),
-          ),
-        ),
-        const GenericPanel(
-          title: 'V2-ready transfer hook',
-          description: 'Transfer records preserve room for future NFC or Bluetooth verification without changing the ownership authority model.',
-        ),
-      ],
-    );
-  }
-}
-
-class InventoryPanel extends StatelessWidget {
-  const InventoryPanel({required this.catalog, super.key});
-
-  final DemoCatalog catalog;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: <Widget>[
-        Text('Inventory and item states', style: Theme.of(context).textTheme.displaySmall),
-        ...catalog.items().map(
-          (UniqueItem item) => Card(
-            child: ListTile(
-              title: Text(item.productName),
-              subtitle: Text('State: ${item.state.key}'),
-              trailing: Text(item.serialNumber),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class SettingsPanel extends StatelessWidget {
-  const SettingsPanel({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const GenericPanel(
-      title: 'Marketplace settings',
-      description: 'Configure platform fee rate, default royalty rate, marketplace rules, and editorial brand settings without exposing any client secrets.',
-    );
-  }
-}
-
-class GenericPanel extends StatelessWidget {
-  const GenericPanel({required this.title, required this.description, super.key});
-
-  final String title;
-  final String description;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 12),
-              Text(description),
-            ],
           ),
         ),
       ),
@@ -268,29 +482,246 @@ class GenericPanel extends StatelessWidget {
   }
 }
 
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.title, required this.value});
+class AdminSignInView extends StatelessWidget {
+  const AdminSignInView({
+    required this.formKey,
+    required this.emailController,
+    required this.passwordController,
+    required this.isBusy,
+    required this.message,
+    required this.messageIsError,
+    required this.onSubmit,
+    super.key,
+  });
 
-  final String title;
-  final String value;
+  final GlobalKey<FormState> formKey;
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
+  final bool isBusy;
+  final String? message;
+  final bool messageIsError;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 220,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(title),
-              const SizedBox(height: 8),
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
-            ],
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Operational access',
+                      style: Theme.of(context).textTheme.displaySmall,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Sign in with an approved admin, owner, support, or artist-manager account. Ownership and restriction controls remain server-authoritative.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 20),
+                    if (message != null)
+                      InlineMessage(message: message!, isError: messageIsError),
+                    TextFormField(
+                      controller: emailController,
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      validator: (String? value) => validateEmail(value ?? ''),
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      validator: (String? value) =>
+                          validatePassword(value ?? ''),
+                      onFieldSubmitted: (_) => onSubmit(),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: isBusy ? null : onSubmit,
+                        child: isBusy
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Enter admin console'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class DisputeActionInput {
+  const DisputeActionInput({
+    required this.status,
+    required this.note,
+    required this.releaseItem,
+    required this.releaseTargetState,
+  });
+
+  final String status;
+  final String note;
+  final bool releaseItem;
+  final String? releaseTargetState;
+}
+
+Future<DisputeActionInput?> promptForDisputeAction(
+  BuildContext context,
+  AdminDisputeRecord dispute,
+) async {
+  final TextEditingController controller = TextEditingController();
+  String status = dispute.disputeStatus == 'open'
+      ? 'under_review'
+      : dispute.disputeStatus;
+  bool releaseItem = false;
+  String releaseTargetState = 'claimed';
+
+  final DisputeActionInput? value = await showDialog<DisputeActionInput>(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1712),
+            title: Text('Update dispute ${dispute.serialNumber}'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  DropdownButtonFormField<String>(
+                    value: status,
+                    decoration: const InputDecoration(
+                      labelText: 'Dispute status',
+                    ),
+                    items:
+                        const <String>[
+                              'open',
+                              'under_review',
+                              'resolved',
+                              'rejected',
+                            ]
+                            .map(
+                              (String value) => DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (String? value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setDialogState(() {
+                        status = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: releaseItem,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Release item from restricted state'),
+                    subtitle: const Text(
+                      'Use only when the dispute outcome allows the item to return to a safe non-restricted lifecycle state.',
+                    ),
+                    onChanged: (bool? value) {
+                      setDialogState(() {
+                        releaseItem = value ?? false;
+                      });
+                    },
+                  ),
+                  if (releaseItem) ...<Widget>[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: releaseTargetState,
+                      decoration: const InputDecoration(
+                        labelText: 'Release target state',
+                      ),
+                      items:
+                          const <String>[
+                                'claimed',
+                                'transferred',
+                                'sold_unclaimed',
+                                'in_inventory',
+                                'archived',
+                              ]
+                              .map(
+                                (String value) => DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(value),
+                                ),
+                              )
+                              .toList(),
+                      onChanged: (String? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setDialogState(() {
+                          releaseTargetState = value;
+                        });
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'Admin note',
+                      hintText: 'Document the resolution rationale',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pop(
+                    DisputeActionInput(
+                      status: status,
+                      note: controller.text.trim(),
+                      releaseItem: releaseItem,
+                      releaseTargetState: releaseItem
+                          ? releaseTargetState
+                          : null,
+                    ),
+                  );
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  controller.dispose();
+  return value;
 }

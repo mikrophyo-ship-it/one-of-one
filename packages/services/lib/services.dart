@@ -1,5 +1,6 @@
 library services;
 
+export 'src/admin/admin_operations_service.dart';
 export 'src/auth/auth_action_result.dart';
 export 'src/auth/supabase_auth_service.dart';
 export 'src/marketplace/marketplace_workflow_service.dart';

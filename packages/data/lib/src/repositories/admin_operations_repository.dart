@@ -1,0 +1,39 @@
+import 'package:domain/domain.dart';
+
+abstract class AdminOperationsRepository {
+  AdminOperationsSnapshot? snapshot();
+
+  Future<MarketplaceActionResult<AdminOperationsSnapshot>> refresh();
+
+  Future<MarketplaceActionResult<AdminDisputeRecord>> updateDisputeStatus({
+    required String disputeId,
+    required String status,
+    required String note,
+    required bool releaseItem,
+    String? releaseTargetState,
+  });
+
+  Future<MarketplaceActionResult<AdminListingRecord>> moderateListing({
+    required String listingId,
+    required String action,
+    required String note,
+  });
+
+  Future<MarketplaceActionResult<PlatformSettingsSnapshot>> updateSettings({
+    required int platformFeeBps,
+    required int defaultRoyaltyBps,
+    required Map<String, dynamic> marketplaceRules,
+    required Map<String, dynamic> brandSettings,
+  });
+
+  Future<MarketplaceActionResult<AdminCustomerRecord>> setUserRole({
+    required String userId,
+    required String role,
+  });
+
+  Future<MarketplaceActionResult<void>> flagItemStatus({
+    required String itemId,
+    required String targetState,
+    required String note,
+  });
+}

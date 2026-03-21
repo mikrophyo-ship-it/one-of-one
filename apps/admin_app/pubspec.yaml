@@ -10,16 +10,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  supabase_flutter: ^2.8.0
   core_ui:
     path: ../../packages/core_ui
   data:
     path: ../../packages/data
   domain:
     path: ../../packages/domain
+  services:
+    path: ../../packages/services
   utils:
     path: ../../packages/utils
 
 flutter:
   uses-material-design: true
-
-
