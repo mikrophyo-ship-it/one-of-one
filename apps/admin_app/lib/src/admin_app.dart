@@ -22,17 +22,52 @@ class OneOfOneAdminApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AdminAppBootstrap bootstrap = AdminAppBootstrap.fromEnvironment();
     return MaterialApp(
       title: 'One of One Admin',
       debugShowCheckedModeBanner: false,
       theme: OneOfOneTheme.adminTheme(),
-      home: const AdminShell(),
+      home: bootstrap.configurationError != null
+          ? ConfigState(message: bootstrap.configurationError!)
+          : AdminShell(
+              client: bootstrap.client!,
+              configurationError: bootstrap.configurationError,
+            ),
+    );
+  }
+}
+
+class AdminAppBootstrap {
+  const AdminAppBootstrap({
+    required this.client,
+    required this.configurationError,
+  });
+
+  final SupabaseClient? client;
+  final String? configurationError;
+
+  static AdminAppBootstrap fromEnvironment() {
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    if (url.isEmpty || anonKey.isEmpty) {
+      return const AdminAppBootstrap(
+        client: null,
+        configurationError:
+            'Provide SUPABASE_URL and SUPABASE_ANON_KEY to run the admin console.',
+      );
+    }
+    return AdminAppBootstrap(
+      client: Supabase.instance.client,
+      configurationError: null,
     );
   }
 }
 
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key});
+  const AdminShell({required this.client, this.configurationError, super.key});
+
+  final SupabaseClient client;
+  final String? configurationError;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -67,15 +102,14 @@ class _AdminShellState extends State<AdminShell> {
   @override
   void initState() {
     super.initState();
-    final SupabaseClient? client = Supabase.instance.client;
     _authService = SupabaseAuthService(
-      client: client,
-      configurationError: _configurationError(),
+      client: widget.client,
+      configurationError: widget.configurationError,
     );
     _adminService = AdminOperationsService(
       repository: SupabaseAdminOperationsRepository(
-        client: client,
-        configurationError: _configurationError(),
+        client: widget.client,
+        configurationError: widget.configurationError,
       ),
     );
     _snapshot = _adminService.snapshot();
@@ -109,10 +143,6 @@ class _AdminShellState extends State<AdminShell> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_authService.isConfigured) {
-      return ConfigState(message: _configurationError()!);
-    }
-
     if (_authService.currentSession == null) {
       return AdminSignInView(
         formKey: _authFormKey,
@@ -437,15 +467,6 @@ class _AdminShellState extends State<AdminShell> {
     controller.dispose();
     return value;
   }
-
-  String? _configurationError() {
-    const String url = String.fromEnvironment('SUPABASE_URL');
-    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-    if (url.isEmpty || anonKey.isEmpty) {
-      return 'Provide SUPABASE_URL and SUPABASE_ANON_KEY to run the admin console.';
-    }
-    return null;
-  }
 }
 
 class ConfigState extends StatelessWidget {
@@ -610,24 +631,22 @@ Future<DisputeActionInput?> promptForDisputeAction(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   DropdownButtonFormField<String>(
-                    value: status,
+                    initialValue: status,
                     decoration: const InputDecoration(
                       labelText: 'Dispute status',
                     ),
                     items:
                         const <String>[
-                              'open',
-                              'under_review',
-                              'resolved',
-                              'rejected',
-                            ]
-                            .map(
-                              (String value) => DropdownMenuItem<String>(
-                                value: value,
-                                child: Text(value),
-                              ),
-                            )
-                            .toList(),
+                          'open',
+                          'under_review',
+                          'resolved',
+                          'rejected',
+                        ].map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
                     onChanged: (String? value) {
                       if (value == null) {
                         return;
@@ -654,25 +673,23 @@ Future<DisputeActionInput?> promptForDisputeAction(
                   if (releaseItem) ...<Widget>[
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: releaseTargetState,
+                      initialValue: releaseTargetState,
                       decoration: const InputDecoration(
                         labelText: 'Release target state',
                       ),
                       items:
                           const <String>[
-                                'claimed',
-                                'transferred',
-                                'sold_unclaimed',
-                                'in_inventory',
-                                'archived',
-                              ]
-                              .map(
-                                (String value) => DropdownMenuItem<String>(
-                                  value: value,
-                                  child: Text(value),
-                                ),
-                              )
-                              .toList(),
+                            'claimed',
+                            'transferred',
+                            'sold_unclaimed',
+                            'in_inventory',
+                            'archived',
+                          ].map((String value) {
+                            return DropdownMenuItem<String>(
+                              value: value,
+                              child: Text(value),
+                            );
+                          }).toList(),
                       onChanged: (String? value) {
                         if (value == null) {
                           return;

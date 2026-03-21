@@ -8,6 +8,7 @@ void main() {
     await tester.pumpWidget(const OneOfOneAdminApp());
     await tester.pumpAndSettle();
 
+    expect(find.byType(ConfigState), findsOneWidget);
     expect(find.text('Admin configuration required'), findsOneWidget);
     expect(
       find.textContaining('Provide SUPABASE_URL and SUPABASE_ANON_KEY'),

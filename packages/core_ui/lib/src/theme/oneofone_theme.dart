@@ -38,7 +38,7 @@ class OneOfOneTheme {
           color: black,
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: const Color(0xFF181818),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         margin: const EdgeInsets.symmetric(vertical: 10),
