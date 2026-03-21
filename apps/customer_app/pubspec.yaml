@@ -1,4 +1,4 @@
-name: customer_app
+﻿name: customer_app
 description: One of One customer marketplace app.
 publish_to: none
 version: 0.1.0
@@ -21,6 +21,10 @@ dependencies:
     path: ../../packages/services
   utils:
     path: ../../packages/utils
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true

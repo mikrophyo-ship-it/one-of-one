@@ -1,5 +1,7 @@
 import 'item_state.dart';
 
+const Object _uniqueItemUnset = Object();
+
 class UniqueItem {
   const UniqueItem({
     required this.id,
@@ -25,9 +27,9 @@ class UniqueItem {
 
   UniqueItem copyWith({
     ItemState? state,
-    String? currentOwnerUserId,
+    Object? currentOwnerUserId = _uniqueItemUnset,
     bool? claimCodeConsumed,
-    int? askingPrice,
+    Object? askingPrice = _uniqueItemUnset,
   }) {
     return UniqueItem(
       id: id,
@@ -36,9 +38,13 @@ class UniqueItem {
       artistId: artistId,
       productName: productName,
       state: state ?? this.state,
-      currentOwnerUserId: currentOwnerUserId ?? this.currentOwnerUserId,
+      currentOwnerUserId: currentOwnerUserId == _uniqueItemUnset
+          ? this.currentOwnerUserId
+          : currentOwnerUserId as String?,
       claimCodeConsumed: claimCodeConsumed ?? this.claimCodeConsumed,
-      askingPrice: askingPrice ?? this.askingPrice,
+      askingPrice: askingPrice == _uniqueItemUnset
+          ? this.askingPrice
+          : askingPrice as int?,
     );
   }
 }

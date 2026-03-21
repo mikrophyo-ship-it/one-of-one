@@ -28,31 +28,28 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       );
     }
 
+    final MarketplaceActionResult<void> accessCheck =
+        await _assertAdminAccess();
+    if (!accessCheck.success) {
+      return MarketplaceActionResult<AdminOperationsSnapshot>(
+        success: false,
+        message: accessCheck.message,
+      );
+    }
+
     try {
-      final List<dynamic> dashboardRows = await _client!
-          .from('admin_dashboard_overview')
-          .select();
-      final List<dynamic> customerRows = await _client!
-          .from('admin_customer_overview')
-          .select()
-          .order('created_at', ascending: false);
-      final List<dynamic> listingRows = await _client!
-          .from('admin_listing_queue')
-          .select()
-          .order('created_at', ascending: false);
-      final List<dynamic> disputeRows = await _client!
-          .from('admin_dispute_queue')
-          .select()
-          .order('created_at', ascending: false);
-      final List<dynamic> orderRows = await _client!
-          .from('admin_order_queue')
-          .select()
-          .order('created_at', ascending: false);
-      final List<dynamic> auditRows = await _client!
-          .from('admin_audit_feed')
-          .select()
-          .order('created_at', ascending: false)
-          .limit(150);
+      final List<dynamic> dashboardRows =
+          (await _client!.rpc('get_admin_dashboard_overview')) as List<dynamic>;
+      final List<dynamic> customerRows =
+          (await _client!.rpc('get_admin_customer_overview')) as List<dynamic>;
+      final List<dynamic> listingRows =
+          (await _client!.rpc('get_admin_listing_queue')) as List<dynamic>;
+      final List<dynamic> disputeRows =
+          (await _client!.rpc('get_admin_dispute_queue')) as List<dynamic>;
+      final List<dynamic> orderRows =
+          (await _client!.rpc('get_admin_order_queue')) as List<dynamic>;
+      final List<dynamic> auditRows =
+          (await _client!.rpc('get_admin_audit_feed')) as List<dynamic>;
       final Map<String, dynamic> settingsRow = await _client!
           .from('platform_settings')
           .select(
@@ -288,6 +285,46 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     }
   }
 
+  Future<MarketplaceActionResult<void>> _assertAdminAccess() async {
+    final String? currentUserId = _client?.auth.currentUser?.id;
+    if (currentUserId == null) {
+      return const MarketplaceActionResult<void>(
+        success: false,
+        message: 'Sign in with an admin-approved account to continue.',
+      );
+    }
+
+    try {
+      final Map<String, dynamic> profile = await _client!
+          .from('user_profiles')
+          .select('role')
+          .eq('user_id', currentUserId)
+          .single();
+      const Set<String> adminRoles = <String>{
+        'admin',
+        'owner',
+        'artist_manager',
+        'support',
+      };
+      final String role = profile['role'].toString();
+      if (!adminRoles.contains(role)) {
+        return const MarketplaceActionResult<void>(
+          success: false,
+          message: 'This account does not have admin console access.',
+        );
+      }
+      return const MarketplaceActionResult<void>(
+        success: true,
+        message: 'Admin access confirmed.',
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
   AdminDashboardSnapshot _dashboardFromRow(Map<String, dynamic> row) {
     return AdminDashboardSnapshot(
       openDisputes: _toInt(row['open_disputes']),
@@ -447,6 +484,11 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     }
     if (message.contains('Unsafe release target state')) {
       return 'That item release state would violate marketplace controls.';
+    }
+    if (message.contains(
+      'JSON object requested, multiple (or no) rows returned',
+    )) {
+      return 'This account does not have admin console access.';
     }
     return message;
   }

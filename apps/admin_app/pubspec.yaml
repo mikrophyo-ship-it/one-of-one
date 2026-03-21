@@ -1,4 +1,4 @@
-name: admin_app
+﻿name: admin_app
 description: One of One admin operations console.
 publish_to: none
 version: 0.1.0
@@ -21,6 +21,10 @@ dependencies:
     path: ../../packages/services
   utils:
     path: ../../packages/utils
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true

@@ -1,4 +1,4 @@
-# One of One Architecture
+﻿# One of One Architecture
 
 ## Monorepo shape
 - `apps/customer_app`: mobile-first Flutter customer experience for authentication, discovery, authenticity scan, claiming, vault, resale, disputes, and profile.
@@ -26,7 +26,7 @@
 - `public_authenticity_items` and `get_public_authenticity_by_qr_token` provide a privacy-safe authenticity surface.
 - `public_marketplace_listings` and `public_collectible_catalog` provide sanitized public shopping surfaces without exposing hidden claim data or owner identity.
 - `get_my_collectibles()` and `get_my_item_history(item_id)` provide owner-safe authenticated reads for vault and provenance refresh.
-- `admin_dashboard_overview`, `admin_customer_overview`, `admin_listing_queue`, `admin_dispute_queue`, `admin_order_queue`, and `admin_audit_feed` provide the web admin console with operational read models behind admin-capable RLS.
+- `admin_dashboard_overview`, `admin_customer_overview`, `admin_listing_queue`, `admin_dispute_queue`, `admin_order_queue`, and `admin_audit_feed` remain internal read models, while `get_admin_dashboard_overview()`, `get_admin_customer_overview()`, `get_admin_listing_queue()`, `get_admin_dispute_queue()`, `get_admin_order_queue()`, and `get_admin_audit_feed()` are the admin-checked RPC gateways the web console calls.
 - Disputed, stolen, and frozen states are blocked centrally before claim, listing, or transfer can proceed.
 - Ledger tables split seller payout, artist royalty, and platform fee so resale economics stay auditable.
 
@@ -40,3 +40,4 @@
 - `ownership_transfers.v2_transfer_channel` preserves room for NFC/Bluetooth verification later without changing core ownership authority.
 - Routing and app structure leave space for dedicated public authenticity web routing.
 - Payment service boundary and admin settings are ready for a real provider and more advanced payout orchestration.
+

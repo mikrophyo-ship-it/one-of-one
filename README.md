@@ -1,4 +1,4 @@
-# One of One
+﻿# One of One
 
 One of One is a premium collectible fashion marketplace for original human-made artwork garments with platform-authoritative ownership, authenticity verification, and controlled on-platform resale.
 
@@ -7,7 +7,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 - Flutter admin app for operational overview, customers, orders, listing moderation, disputes, audit review, and persisted marketplace settings.
 - Shared Dart packages for domain rules, repository contracts, services, formatting, and design system.
 - Supabase schema, RLS posture, server-side ownership and resale functions, admin moderation functions, customer-facing catalog/history contract views and RPCs, and safer catalog-only seed data.
-- Pure Dart offline verification for fee calculation, ownership claim validation, dispute/frozen blocking, and state transitions.
+- Automated offline verification for fee calculation, claim validation, resale eligibility, dispute and freeze blocking, transfer gating, and demo repository behavior.
 
 ## Repository structure
 - `apps/customer_app`
@@ -26,18 +26,20 @@ One of One is a premium collectible fashion marketplace for original human-made 
 1. Install Flutter and Dart 3.10+.
 2. Copy `.env.example` to `.env` and fill in your Supabase values.
 3. Run `dart pub get` from the workspace root or per package/app.
-4. Apply `supabase/migrations/0001_init.sql`, `supabase/migrations/0002_marketplace_hardening.sql`, `supabase/migrations/0003_backend_contract_completion.sql`, `supabase/migrations/0004_customer_read_contract.sql`, `supabase/migrations/0005_qr_claim_contract.sql`, `supabase/migrations/0006_admin_operations_contract.sql`, and `supabase/seed/seed.sql` to your Supabase project.
+4. Apply `supabase/migrations/0001_init.sql`, `supabase/migrations/0002_marketplace_hardening.sql`, `supabase/migrations/0003_backend_contract_completion.sql`, `supabase/migrations/0004_customer_read_contract.sql`, `supabase/migrations/0005_qr_claim_contract.sql`, `supabase/migrations/0006_admin_operations_contract.sql`, `supabase/migrations/0007_admin_read_gateways.sql`, and `supabase/seed/seed.sql` to your Supabase project.
 5. Create real local-dev users through Supabase Auth, not through SQL inserts into `auth.users`.
 6. After sign-in, call `public.upsert_my_profile(display_name, username, avatar_url)` for each account.
 7. Grant an admin role with `public.admin_set_user_role(user_id, role)` from an existing admin account or dashboard bootstrap step.
 8. Run `flutter run -d chrome --project-dir apps\admin_app --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...` for the admin console.
 9. Run `flutter run --project-dir apps\customer_app --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...` for the mobile-first customer app.
 
-## Useful commands
+## Verification commands
 - `dart packages\domain\test\marketplace_rules_test.dart`
-- `dart analyze`
-- `flutter run -d chrome --project-dir apps\admin_app --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...`
-- `flutter run --project-dir apps\customer_app --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...`
+- `dart packages\data\test\demo_catalog_test.dart`
+- `flutter test --project-dir apps\customer_app test\smoke_test.dart`
+- `flutter test --project-dir apps\admin_app test\smoke_test.dart`
+- `flutter analyze --project-dir apps\customer_app`
+- `flutter analyze --project-dir apps\admin_app`
 
 ## Backend contract docs
 - See `docs/backend_contract.md` for the lifecycle, RPCs, views, and local-dev flow.
@@ -46,7 +48,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 - V1 keeps app-side state management simple with `ChangeNotifier`-style local orchestration to reduce ceremony while the business rules stay centralized in shared domain and backend layers.
 - QR rendering and lookup are wired to a real backend contract without binding the codebase to a specific camera-scanner plugin yet.
 - Mock payment capture is still used in the customer app while the backend ownership and ledger path is now real.
-- The admin console is now backend-driven for disputes, listing moderation, customer roles, audit review, freeze controls, and settings persistence, but still needs broader auth hardening and richer operational filtering over time.
+- The admin console is backend-driven for disputes, listing moderation, customer roles, audit review, freeze controls, and settings persistence, but still needs broader auth hardening and richer operational filtering over time.
 
 ## Deferred to V2
 - NFC and Bluetooth transfer verification
@@ -59,4 +61,5 @@ One of One is a premium collectible fashion marketplace for original human-made 
 
 ## Notes
 - Ownership, listing, dispute, moderation, payment capture, and transfer authority are enforced in Supabase RPCs rather than trusted client state.
-- The current repository still needs full Flutter platform scaffolding and broader analyzer/test verification in an unrestricted environment.
+- The current repository still needs full Flutter platform scaffolding and full analyzer or widget-test verification in an unrestricted local environment if your sandbox blocks Flutter subprocesses.
+
