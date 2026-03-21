@@ -7,11 +7,16 @@ class MarketplaceWorkflowService {
   const MarketplaceWorkflowService({
     required MarketplaceRepository repository,
     required PaymentProvider paymentProvider,
-  })  : _repository = repository,
-        _paymentProvider = paymentProvider;
+  }) : _repository = repository,
+       _paymentProvider = paymentProvider;
 
   final MarketplaceRepository _repository;
   final PaymentProvider _paymentProvider;
+
+  Future<MarketplaceActionResult<PublicAuthenticityRecord>>
+  lookupPublicAuthenticity({required String qrToken}) async {
+    return _repository.lookupPublicAuthenticity(qrToken: qrToken);
+  }
 
   Future<MarketplaceActionResult<UniqueItem>> claimOwnership({
     required String itemId,
@@ -20,6 +25,18 @@ class MarketplaceWorkflowService {
   }) async {
     return _repository.claimOwnership(
       itemId: itemId,
+      claimCode: claimCode,
+      userId: userId,
+    );
+  }
+
+  Future<MarketplaceActionResult<UniqueItem>> claimOwnershipByQrToken({
+    required String qrToken,
+    required String claimCode,
+    required String userId,
+  }) async {
+    return _repository.claimOwnershipByQrToken(
+      qrToken: qrToken,
       claimCode: claimCode,
       userId: userId,
     );

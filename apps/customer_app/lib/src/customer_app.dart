@@ -210,6 +210,7 @@ class CustomerController extends ChangeNotifier {
   String? currentDisplayName;
   String? statusMessage;
   String? errorMessage;
+  PublicAuthenticityRecord? scannedAuthenticity;
   final List<String> notifications = <String>[
     'Afterglow No. 01 has new resale interest.',
     'Ownership certificate ready for download.',
@@ -335,6 +336,57 @@ class CustomerController extends ChangeNotifier {
   void toggleInbox() {
     showInbox = !showInbox;
     notifyListeners();
+  }
+
+  Future<PublicAuthenticityRecord?> lookupPublicAuthenticity({
+    required String qrToken,
+  }) async {
+    isBusy = true;
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    final MarketplaceActionResult<PublicAuthenticityRecord> result =
+        await _workflowService.lookupPublicAuthenticity(qrToken: qrToken);
+    isBusy = false;
+    if (result.success && result.data != null) {
+      scannedAuthenticity = result.data;
+      statusMessage = 'Authenticity verified for ${result.data!.serialNumber}.';
+      notifyListeners();
+      return result.data;
+    }
+
+    scannedAuthenticity = null;
+    errorMessage = result.message;
+    notifyListeners();
+    return null;
+  }
+
+  Future<String> claimScannedItem({required String claimCode}) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+    if (scannedAuthenticity == null) {
+      return _failAction('Verify a QR token before claiming ownership.');
+    }
+
+    return _runAction<UniqueItem>(
+      operation: () => _workflowService.claimOwnershipByQrToken(
+        qrToken: scannedAuthenticity!.qrToken,
+        claimCode: claimCode,
+        userId: currentUserId,
+      ),
+      onSuccess: (UniqueItem? item, String message) {
+        if (item != null) {
+          notifications.insert(
+            0,
+            'Ownership refreshed for ${item.serialNumber}.',
+          );
+        }
+        return message;
+      },
+    );
   }
 
   Future<String> claimItem({
@@ -1254,35 +1306,20 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
+  final TextEditingController _qrTokenController = TextEditingController();
   final TextEditingController _claimCodeController = TextEditingController();
 
   @override
   void dispose() {
+    _qrTokenController.dispose();
     _claimCodeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.controller.items.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.all(20),
-        children: const <Widget>[
-          Card(
-            child: ListTile(
-              title: Text('No authenticated items available to scan yet.'),
-              subtitle: Text(
-                'Mint and seed at least one item in Supabase to exercise the QR and claim flow.',
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final UniqueItem scanned = widget.controller.items.length > 1
-        ? widget.controller.items[1]
-        : widget.controller.items.first;
+    final PublicAuthenticityRecord? result =
+        widget.controller.scannedAuthenticity;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: <Widget>[
@@ -1298,83 +1335,128 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'V1 flow opens a privacy-safe authenticity route and requires a separate hidden claim code for ownership.',
-                ),
-                const SizedBox(height: 12),
-                Text('Detected item: ${scanned.serialNumber}'),
-                Text(
-                  'Public status: ${scanned.state.key.replaceAll('_', ' ')}',
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => PublicAuthenticityPage(
-                          controller: widget.controller,
-                          itemId: scanned.id,
-                        ),
-                      ),
-                    );
-                  },
-                  child: const Text('Open public authenticity page'),
+                  'Enter the QR token to resolve privacy-safe authenticity details from Supabase. Hidden claim codes stay separate from the public authenticity route.',
                 ),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: _claimCodeController,
+                  controller: _qrTokenController,
                   decoration: const InputDecoration(
-                    labelText: 'Enter hidden claim code',
-                    helperText: 'Packaged separately from the public QR.',
+                    labelText: 'QR token',
+                    helperText:
+                        'Example: the token encoded inside the public authenticity QR.',
                   ),
                 ),
                 const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () async {
-                    final String message = await widget.controller.claimItem(
-                      itemId: scanned.id,
-                      claimCode: _claimCodeController.text,
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(message)));
-                    }
-                    _claimCodeController.clear();
-                  },
-                  child: const Text('Claim ownership'),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final PublicAuthenticityRecord? record = await widget
+                          .controller
+                          .lookupPublicAuthenticity(
+                            qrToken: _qrTokenController.text,
+                          );
+                      if (!context.mounted || record == null) {
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              PublicAuthenticityPage(record: record),
+                        ),
+                      );
+                    },
+                    child: const Text('Verify authenticity'),
+                  ),
                 ),
               ],
             ),
           ),
         ),
+        if (widget.controller.statusMessage != null) ...<Widget>[
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.verified_outlined),
+              title: Text(widget.controller.statusMessage!),
+            ),
+          ),
+        ],
+        if (widget.controller.errorMessage != null) ...<Widget>[
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.error_outline),
+              title: Text(widget.controller.errorMessage!),
+            ),
+          ),
+        ],
+        if (result != null) ...<Widget>[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    result.serialNumber,
+                    style: Theme.of(context).textTheme.displaySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(result.artworkTitle),
+                  Text(result.artistName),
+                  Text(
+                    'Marketplace status: ${result.state.key.replaceAll('_', ' ')}',
+                  ),
+                  const SizedBox(height: 8),
+                  Text(result.ownershipVisibility),
+                  Text('${result.verifiedTransferCount} verified transfer(s)'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _claimCodeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Enter hidden claim code',
+                      helperText:
+                          'This is packaged separately and never appears in the public authenticity result.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final String message = await widget.controller
+                            .claimScannedItem(
+                              claimCode: _claimCodeController.text,
+                            );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(message)));
+                        }
+                        _claimCodeController.clear();
+                      },
+                      child: const Text('Claim ownership'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
 class PublicAuthenticityPage extends StatelessWidget {
-  const PublicAuthenticityPage({
-    required this.controller,
-    required this.itemId,
-    super.key,
-  });
+  const PublicAuthenticityPage({required this.record, super.key});
 
-  final CustomerController controller;
-  final String itemId;
+  final PublicAuthenticityRecord record;
 
   @override
   Widget build(BuildContext context) {
-    final UniqueItem? item = controller.itemById(itemId);
-    if (item == null) {
-      return const Scaffold(
-        body: Center(child: Text('Authenticity record unavailable.')),
-      );
-    }
-    final Artwork? artwork = controller.artworkFor(item);
-    final Artist? artist = controller.artistFor(item);
-    final int transferCount = controller.historyFor(item.id).isEmpty
-        ? 0
-        : controller.historyFor(item.id).length - 1;
     return Scaffold(
       appBar: AppBar(title: const Text('Authenticity verified')),
       body: ListView(
@@ -1386,25 +1468,25 @@ class PublicAuthenticityPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text('Verified collectible status'),
-                  const SizedBox(height: 8),
                   Text(
-                    item.serialNumber,
+                    record.serialNumber,
                     style: Theme.of(context).textTheme.displaySmall,
                   ),
-                  Text(artwork?.title ?? item.productName),
-                  Text(artist?.displayName ?? 'Unknown artist'),
+                  const SizedBox(height: 8),
+                  Text(record.artworkTitle),
+                  Text(record.artistName),
+                  const SizedBox(height: 12),
+                  Text('Authenticity: ${record.authenticityStatus}'),
                   Text(
-                    'Marketplace status: ${item.state.key.replaceAll('_', ' ')}',
+                    'Marketplace status: ${record.state.key.replaceAll('_', ' ')}',
                   ),
                   const SizedBox(height: 12),
-                  Text(artwork?.story ?? 'Story unavailable.'),
+                  Text(record.publicStory),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Ownership visibility: current owner hidden, platform verification only.',
-                  ),
+                  Text('Garment: ${record.garmentName}'),
+                  Text('Ownership visibility: ${record.ownershipVisibility}'),
                   Text(
-                    'Resale history summary: $transferCount verified transfer(s).',
+                    'Verified resale history: ${record.verifiedTransferCount} transfer(s).',
                   ),
                 ],
               ),

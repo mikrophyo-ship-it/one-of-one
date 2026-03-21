@@ -17,6 +17,7 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   List<Artwork> _artworks = <Artwork>[];
   List<UniqueItem> _items = <UniqueItem>[];
   List<Listing> _listings = <Listing>[];
+  Map<String, String> _qrTokensByItemId = <String, String>{};
   Map<String, List<OwnershipRecord>> _histories =
       <String, List<OwnershipRecord>>{};
 
@@ -123,6 +124,43 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<UniqueItem>> claimOwnershipByQrToken({
+    required String qrToken,
+    required String claimCode,
+    required String userId,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'claim_item_ownership_by_qr_token',
+        params: <String, dynamic>{
+          'p_public_qr_token': qrToken.trim(),
+          'p_claim_code': claimCode,
+        },
+      );
+      await refresh(userId: userId);
+      final UniqueItem? matchedItem = _itemByQrToken(qrToken.trim());
+      return MarketplaceActionResult<UniqueItem>(
+        success: true,
+        message: 'Ownership claim recorded by the backend.',
+        data: matchedItem,
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
   Future<MarketplaceActionResult<Listing>> createResaleListing({
     required String itemId,
     required String userId,
@@ -176,6 +214,42 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
 
   @override
   List<UniqueItem> items() => List<UniqueItem>.unmodifiable(_items);
+
+  @override
+  Future<MarketplaceActionResult<PublicAuthenticityRecord>>
+  lookupPublicAuthenticity({required String qrToken}) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<PublicAuthenticityRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final dynamic row = await _client!.rpc(
+        'get_public_authenticity_by_qr_token',
+        params: <String, dynamic>{'p_public_qr_token': qrToken.trim()},
+      );
+      if (row == null) {
+        return const MarketplaceActionResult<PublicAuthenticityRecord>(
+          success: false,
+          message: 'No verified collectible matched that QR token.',
+        );
+      }
+
+      return MarketplaceActionResult<PublicAuthenticityRecord>(
+        success: true,
+        message: 'Authenticity verified from the backend.',
+        data: _publicAuthenticityFromRow(row as Map<String, dynamic>),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<PublicAuthenticityRecord>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
 
   @override
   Future<MarketplaceActionResult<UniqueItem>> openDispute({
@@ -232,6 +306,7 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       _artworks = <Artwork>[];
       _items = <UniqueItem>[];
       _listings = <Listing>[];
+      _qrTokensByItemId = <String, String>{};
       _histories = <String, List<OwnershipRecord>>{};
       return;
     }
@@ -267,6 +342,7 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       final Map<String, dynamic> map = row as Map<String, dynamic>;
       final UniqueItem item = _catalogItemFromRow(map);
       mergedItems[item.id] = item;
+      _qrTokensByItemId[item.id] = map['public_qr_token'].toString();
       if (map['listing_id'] != null &&
           item.state == ItemState.listedForResale) {
         publicListings.add(
@@ -311,6 +387,16 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       );
     _listings = publicListings;
     _histories = histories;
+  }
+
+  UniqueItem? _itemByQrToken(String qrToken) {
+    for (final UniqueItem item in _items) {
+      final String? knownQrToken = _qrTokenForItem(item.id);
+      if (knownQrToken == qrToken) {
+        return item;
+      }
+    }
+    return null;
   }
 
   Listing? _listingById(String listingId) {
@@ -381,6 +467,25 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     );
   }
 
+  PublicAuthenticityRecord _publicAuthenticityFromRow(
+    Map<String, dynamic> row,
+  ) {
+    return PublicAuthenticityRecord(
+      qrToken: row['public_qr_token'].toString(),
+      serialNumber: row['serial_number'].toString(),
+      state: itemStateFromKey(row['state'].toString()),
+      garmentName: row['garment_name'].toString(),
+      artworkTitle: row['artwork_title'].toString(),
+      story: row['public_story']?.toString() ?? row['story'].toString(),
+      artistName: row['artist_name'].toString(),
+      authenticityStatus: row['authenticity_status'].toString(),
+      publicStory: row['public_story']?.toString() ?? row['story'].toString(),
+      ownershipVisibility: row['ownership_visibility'].toString(),
+      verifiedTransferCount:
+          (row['verified_transfer_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   UniqueItem _ownedItemFromRow(Map<String, dynamic> row, UniqueItem? fallback) {
     return UniqueItem(
       id: row['item_id'].toString(),
@@ -396,6 +501,10 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     );
   }
 
+  String? _qrTokenForItem(String itemId) {
+    return _qrTokensByItemId[itemId];
+  }
+
   String _friendlyMessage(PostgrestException error) {
     final String message = error.message;
     if (message.contains('Profile required before claim')) {
@@ -407,10 +516,18 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     if (message.contains('Claim code already used')) {
       return 'This claim code has already been used.';
     }
+    if (message.contains('Authentication required') ||
+        message.contains('JWT') ||
+        message.contains('permission denied')) {
+      return 'Sign in with a real collector account to continue.';
+    }
     if (message.contains(
       'Only the recorded owner, buyer, or admin can open a dispute',
     )) {
       return 'Only the verified owner or buyer can submit this dispute.';
+    }
+    if (message.contains('Authenticity token not found')) {
+      return 'No verified collectible matched that QR token.';
     }
     return message;
   }

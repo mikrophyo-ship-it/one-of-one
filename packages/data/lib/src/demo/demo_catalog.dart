@@ -4,11 +4,12 @@ import '../repositories/marketplace_repository.dart';
 
 class DemoCatalog implements MarketplaceRepository {
   DemoCatalog({MarketplaceRules? rules})
-      : _rules = rules ??
-            const MarketplaceRules(
-              platformFeeBps: 1000,
-              defaultRoyaltyBps: 1200,
-            ) {
+    : _rules =
+          rules ??
+          const MarketplaceRules(
+            platformFeeBps: 1000,
+            defaultRoyaltyBps: 1200,
+          ) {
     _items = <UniqueItem>[
       const UniqueItem(
         id: 'item_afterglow_01',
@@ -44,6 +45,11 @@ class DemoCatalog implements MarketplaceRepository {
         askingPrice: null,
       ),
     ];
+    _qrTokens = <String, String>{
+      'item_afterglow_01': 'qr_afterglow_01',
+      'item_ember_02': 'qr_ember_02',
+      'item_restricted_03': 'qr_restricted_03',
+    };
     _listings = <Listing>[
       const Listing(
         id: 'listing_1',
@@ -102,12 +108,14 @@ class DemoCatalog implements MarketplaceRepository {
   );
 
   late final List<UniqueItem> _items;
+  late final Map<String, String> _qrTokens;
   late final List<Listing> _listings;
   late final List<OwnershipRecord> _ownershipRecords;
 
   @override
-  List<Listing> activeListings() =>
-      List<Listing>.unmodifiable(_listings.where((Listing listing) => listing.isActive));
+  List<Listing> activeListings() => List<Listing>.unmodifiable(
+    _listings.where((Listing listing) => listing.isActive),
+  );
 
   @override
   Artwork? artworkById(String artworkId) {
@@ -126,8 +134,9 @@ class DemoCatalog implements MarketplaceRepository {
     required String buyerUserId,
     required String providerReference,
   }) async {
-    final int itemIndex =
-        _items.indexWhere((UniqueItem item) => item.id == itemId);
+    final int itemIndex = _items.indexWhere(
+      (UniqueItem item) => item.id == itemId,
+    );
     if (itemIndex == -1) {
       return const MarketplaceActionResult<UniqueItem>(
         success: false,
@@ -242,12 +251,30 @@ class DemoCatalog implements MarketplaceRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<UniqueItem>> claimOwnershipByQrToken({
+    required String qrToken,
+    required String claimCode,
+    required String userId,
+  }) async {
+    final String? itemId = _itemIdForQrToken(qrToken);
+    if (itemId == null) {
+      return const MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: 'No verified collectible matched that QR token.',
+      );
+    }
+    return claimOwnership(itemId: itemId, claimCode: claimCode, userId: userId);
+  }
+
+  @override
   Future<MarketplaceActionResult<Listing>> createResaleListing({
     required String itemId,
     required String userId,
     required int priceCents,
   }) async {
-    final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
+    final int itemIndex = _items.indexWhere(
+      (UniqueItem item) => item.id == itemId,
+    );
     if (itemIndex == -1) {
       return const MarketplaceActionResult<Listing>(
         success: false,
@@ -292,7 +319,8 @@ class DemoCatalog implements MarketplaceRepository {
 
     return MarketplaceActionResult<Listing>(
       success: true,
-      message: 'Listing published. Backend eligibility and royalty logic applied.',
+      message:
+          'Listing published. Backend eligibility and royalty logic applied.',
       data: listing,
     );
   }
@@ -317,13 +345,59 @@ class DemoCatalog implements MarketplaceRepository {
   List<UniqueItem> items() => List<UniqueItem>.unmodifiable(_items);
 
   @override
+  Future<MarketplaceActionResult<PublicAuthenticityRecord>>
+  lookupPublicAuthenticity({required String qrToken}) async {
+    final String? itemId = _itemIdForQrToken(qrToken);
+    if (itemId == null) {
+      return const MarketplaceActionResult<PublicAuthenticityRecord>(
+        success: false,
+        message: 'No verified collectible matched that QR token.',
+      );
+    }
+
+    final UniqueItem? item = itemById(itemId);
+    if (item == null) {
+      return const MarketplaceActionResult<PublicAuthenticityRecord>(
+        success: false,
+        message: 'Authenticity record unavailable.',
+      );
+    }
+
+    return MarketplaceActionResult<PublicAuthenticityRecord>(
+      success: true,
+      message: 'Authenticity verified from the backend.',
+      data: PublicAuthenticityRecord(
+        qrToken: qrToken,
+        serialNumber: item.serialNumber,
+        state: item.state,
+        garmentName: item.productName,
+        artworkTitle: artwork.title,
+        story: artwork.story,
+        artistName: maya.displayName,
+        authenticityStatus: 'verified_human_made',
+        publicStory: artwork.story,
+        ownershipVisibility: item.state.isRestricted
+            ? 'restricted ownership status'
+            : 'platform verified',
+        verifiedTransferCount:
+            _ownershipRecords
+                .where((OwnershipRecord record) => record.itemId == item.id)
+                .length -
+            1,
+      ),
+    );
+  }
+
+  @override
   Future<MarketplaceActionResult<UniqueItem>> openDispute({
     required String itemId,
     required String userId,
     required String reason,
     required bool freeze,
   }) async {
-    final int itemIndex = _items.indexWhere((UniqueItem item) => item.id == itemId);
+    final int itemIndex = _items.indexWhere(
+      (UniqueItem item) => item.id == itemId,
+    );
     if (itemIndex == -1) {
       return const MarketplaceActionResult<UniqueItem>(
         success: false,
@@ -357,11 +431,22 @@ class DemoCatalog implements MarketplaceRepository {
   @override
   List<OwnershipRecord> ownershipHistory(String itemId) =>
       List<OwnershipRecord>.unmodifiable(
-        _ownershipRecords.where((OwnershipRecord record) => record.itemId == itemId),
+        _ownershipRecords.where(
+          (OwnershipRecord record) => record.itemId == itemId,
+        ),
       );
 
   @override
   Future<void> refresh({required String userId}) async {}
+
+  String? _itemIdForQrToken(String qrToken) {
+    for (final MapEntry<String, String> entry in _qrTokens.entries) {
+      if (entry.value == qrToken.trim()) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
 
   void _closeOpenOwnershipRecord(String itemId) {
     for (int i = 0; i < _ownershipRecords.length; i++) {

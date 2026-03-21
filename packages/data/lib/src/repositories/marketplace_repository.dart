@@ -10,8 +10,15 @@ abstract class MarketplaceRepository {
   Artwork? artworkById(String artworkId);
   String? currentUserId();
   Future<void> refresh({required String userId});
+  Future<MarketplaceActionResult<PublicAuthenticityRecord>>
+  lookupPublicAuthenticity({required String qrToken});
   Future<MarketplaceActionResult<UniqueItem>> claimOwnership({
     required String itemId,
+    required String claimCode,
+    required String userId,
+  });
+  Future<MarketplaceActionResult<UniqueItem>> claimOwnershipByQrToken({
+    required String qrToken,
     required String claimCode,
     required String userId,
   });
