@@ -125,7 +125,7 @@ class _CustomerRootState extends State<CustomerRoot> {
                       color: const Color(0xFF151515),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: OneOfOneTheme.gold.withOpacity(0.25),
+                        color: OneOfOneTheme.gold.withValues(alpha: 0.25),
                       ),
                     ),
                     child: Column(
@@ -147,7 +147,7 @@ class _CustomerRootState extends State<CustomerRoot> {
               if (controller.isBusy)
                 Positioned.fill(
                   child: Container(
-                    color: Colors.black.withOpacity(0.35),
+                    color: Colors.black.withValues(alpha: 0.35),
                     child: const Center(child: CircularProgressIndicator()),
                   ),
                 ),
@@ -879,7 +879,7 @@ class _AuthScreenState extends State<AuthScreen> {
       },
       style: OutlinedButton.styleFrom(
         backgroundColor: selected
-            ? OneOfOneTheme.gold.withOpacity(0.12)
+            ? OneOfOneTheme.gold.withValues(alpha: 0.12)
             : Colors.transparent,
       ),
       child: Text(label, style: Theme.of(context).textTheme.labelLarge),
@@ -1166,7 +1166,7 @@ class ItemDetailScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF191919),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: OneOfOneTheme.gold.withOpacity(0.3)),
+              border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.3)),
             ),
             child: const Center(
               child: Text('Editorial garment image / human-made proof media'),
