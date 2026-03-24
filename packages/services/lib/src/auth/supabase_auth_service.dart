@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_non_null_assertion
+
 import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';

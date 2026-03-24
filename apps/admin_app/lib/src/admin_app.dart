@@ -9,9 +9,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:utils/utils.dart';
 
 import 'features/audit/audit_panel.dart';
+import 'features/catalog/catalog_panel.dart';
 import 'features/customers/customers_panel.dart';
 import 'features/dashboard/overview_panel.dart';
 import 'features/disputes/disputes_panel.dart';
+import 'features/finance/finance_panel.dart';
 import 'features/listings/listings_panel.dart';
 import 'features/orders/orders_panel.dart';
 import 'features/settings/settings_panel.dart';
@@ -78,8 +80,10 @@ class _AdminShellState extends State<AdminShell> {
     'Overview',
     'Customers',
     'Orders',
+    'Finance',
     'Listings',
     'Disputes',
+    'Catalog',
     'Audit',
     'Settings',
   ];
@@ -162,6 +166,7 @@ class _AdminShellState extends State<AdminShell> {
         onSetRole: _setUserRole,
       ),
       OrdersPanel(orders: _snapshot?.orders ?? const <AdminOrderRecord>[]),
+      FinancePanel(finance: _snapshot?.finance ?? const <AdminFinanceRecord>[]),
       ListingsPanel(
         listings: _snapshot?.listings ?? const <AdminListingRecord>[],
         onModerateListing: _moderateListing,
@@ -171,6 +176,14 @@ class _AdminShellState extends State<AdminShell> {
         disputes: _snapshot?.disputes ?? const <AdminDisputeRecord>[],
         onUpdateDispute: _updateDispute,
         onFlagItem: _flagItem,
+      ),
+      CatalogPanel(
+        artists: _snapshot?.artists ?? const <AdminArtistRecord>[],
+        artworks: _snapshot?.artworks ?? const <AdminArtworkRecord>[],
+        inventory: _snapshot?.inventory ?? const <AdminInventoryRecord>[],
+        onCreateArtist: _createArtist,
+        onCreateArtwork: _createArtwork,
+        onCreateInventory: _createInventory,
       ),
       AuditPanel(audits: _snapshot?.audits ?? const <AdminAuditRecord>[]),
       SettingsPanel(settings: _snapshot?.settings, onSave: _saveSettings),
@@ -432,6 +445,82 @@ class _AdminShellState extends State<AdminShell> {
     });
   }
 
+  Future<void> _createArtist() async {
+    final _CatalogArtistInput? input = await promptForArtist(context);
+    if (input == null) {
+      return;
+    }
+    final MarketplaceActionResult<AdminArtistRecord> result = await _adminService
+        .upsertArtist(
+          displayName: input.displayName,
+          slug: input.slug,
+          royaltyBps: input.royaltyBps,
+          authenticityStatement: input.authenticityStatement,
+          isActive: input.isActive,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _createArtwork() async {
+    final _CatalogArtworkInput? input = await promptForArtwork(
+      context,
+      _snapshot?.artists ?? const <AdminArtistRecord>[],
+    );
+    if (input == null) {
+      return;
+    }
+    final MarketplaceActionResult<AdminArtworkRecord> result = await _adminService
+        .upsertArtwork(
+          artistId: input.artistId,
+          title: input.title,
+          story: input.story,
+          provenanceProof: input.provenanceProof,
+          creationDate: input.creationDate,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _createInventory() async {
+    final _CatalogInventoryInput? input = await promptForInventory(
+      context,
+      _snapshot?.artists ?? const <AdminArtistRecord>[],
+      _snapshot?.artworks ?? const <AdminArtworkRecord>[],
+    );
+    if (input == null) {
+      return;
+    }
+    final MarketplaceActionResult<AdminInventoryRecord> result =
+        await _adminService.upsertInventoryItem(
+          artistId: input.artistId,
+          artworkId: input.artworkId,
+          garmentProductId: input.garmentProductId,
+          serialNumber: input.serialNumber,
+          itemState: input.itemState,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
   Future<String?> _promptForNote({
     required String title,
     required String hint,
@@ -501,6 +590,54 @@ class ConfigState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CatalogArtistInput {
+  const _CatalogArtistInput({
+    required this.displayName,
+    required this.slug,
+    required this.royaltyBps,
+    required this.authenticityStatement,
+    required this.isActive,
+  });
+
+  final String displayName;
+  final String slug;
+  final int royaltyBps;
+  final String authenticityStatement;
+  final bool isActive;
+}
+
+class _CatalogArtworkInput {
+  const _CatalogArtworkInput({
+    required this.artistId,
+    required this.title,
+    required this.story,
+    required this.provenanceProof,
+    required this.creationDate,
+  });
+
+  final String artistId;
+  final String title;
+  final String story;
+  final List<String> provenanceProof;
+  final DateTime? creationDate;
+}
+
+class _CatalogInventoryInput {
+  const _CatalogInventoryInput({
+    required this.artistId,
+    required this.artworkId,
+    required this.garmentProductId,
+    required this.serialNumber,
+    required this.itemState,
+  });
+
+  final String artistId;
+  final String artworkId;
+  final String garmentProductId;
+  final String serialNumber;
+  final String itemState;
 }
 
 class AdminSignInView extends StatelessWidget {
@@ -603,6 +740,336 @@ class DisputeActionInput {
   final String note;
   final bool releaseItem;
   final String? releaseTargetState;
+}
+
+Future<_CatalogArtistInput?> promptForArtist(BuildContext context) async {
+  final TextEditingController displayName = TextEditingController();
+  final TextEditingController slug = TextEditingController();
+  final TextEditingController royalty = TextEditingController(text: '1200');
+  final TextEditingController statement = TextEditingController();
+  bool isActive = true;
+
+  final _CatalogArtistInput? value = await showDialog<_CatalogArtistInput>(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1712),
+            title: const Text('Create artist'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  TextField(
+                    controller: displayName,
+                    decoration: const InputDecoration(labelText: 'Display name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: slug,
+                    decoration: const InputDecoration(labelText: 'Slug'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: royalty,
+                    decoration: const InputDecoration(labelText: 'Royalty bps'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: statement,
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'Authenticity statement',
+                    ),
+                  ),
+                  CheckboxListTile(
+                    value: isActive,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Active artist'),
+                    onChanged: (bool? value) {
+                      setDialogState(() {
+                        isActive = value ?? true;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _CatalogArtistInput(
+                    displayName: displayName.text.trim(),
+                    slug: slug.text.trim(),
+                    royaltyBps: int.tryParse(royalty.text.trim()) ?? 1200,
+                    authenticityStatement: statement.text.trim(),
+                    isActive: isActive,
+                  ),
+                ),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  displayName.dispose();
+  slug.dispose();
+  royalty.dispose();
+  statement.dispose();
+  return value;
+}
+
+Future<_CatalogArtworkInput?> promptForArtwork(
+  BuildContext context,
+  List<AdminArtistRecord> artists,
+) async {
+  if (artists.isEmpty) {
+    return null;
+  }
+
+  final TextEditingController title = TextEditingController();
+  final TextEditingController story = TextEditingController();
+  final TextEditingController proof = TextEditingController();
+  final TextEditingController created = TextEditingController();
+  String artistId = artists.first.artistId;
+
+  final _CatalogArtworkInput? value = await showDialog<_CatalogArtworkInput>(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1712),
+            title: const Text('Create artwork'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  DropdownButtonFormField<String>(
+                    initialValue: artistId,
+                    decoration: const InputDecoration(labelText: 'Artist'),
+                    items: artists
+                        .map(
+                          (AdminArtistRecord artist) => DropdownMenuItem<String>(
+                            value: artist.artistId,
+                            child: Text(artist.displayName),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          artistId = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(labelText: 'Title'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: story,
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: const InputDecoration(labelText: 'Story'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: proof,
+                    decoration: const InputDecoration(
+                      labelText: 'Provenance proof (comma separated)',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: created,
+                    decoration: const InputDecoration(
+                      labelText: 'Creation date (YYYY-MM-DD)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _CatalogArtworkInput(
+                    artistId: artistId,
+                    title: title.text.trim(),
+                    story: story.text.trim(),
+                    provenanceProof: proof.text
+                        .split(',')
+                        .map((String item) => item.trim())
+                        .where((String item) => item.isNotEmpty)
+                        .toList(),
+                    creationDate: DateTime.tryParse(created.text.trim()),
+                  ),
+                ),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  title.dispose();
+  story.dispose();
+  proof.dispose();
+  created.dispose();
+  return value;
+}
+
+Future<_CatalogInventoryInput?> promptForInventory(
+  BuildContext context,
+  List<AdminArtistRecord> artists,
+  List<AdminArtworkRecord> artworks,
+) async {
+  if (artists.isEmpty || artworks.isEmpty) {
+    return null;
+  }
+
+  final TextEditingController garmentProductId = TextEditingController();
+  final TextEditingController serialNumber = TextEditingController();
+  String artistId = artists.first.artistId;
+  String artworkId = artworks.first.artworkId;
+  String itemState = 'minted';
+
+  final _CatalogInventoryInput? value = await showDialog<_CatalogInventoryInput>(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1712),
+            title: const Text('Create inventory item'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  DropdownButtonFormField<String>(
+                    initialValue: artistId,
+                    decoration: const InputDecoration(labelText: 'Artist'),
+                    items: artists
+                        .map(
+                          (AdminArtistRecord artist) => DropdownMenuItem<String>(
+                            value: artist.artistId,
+                            child: Text(artist.displayName),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          artistId = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: artworkId,
+                    decoration: const InputDecoration(labelText: 'Artwork'),
+                    items: artworks
+                        .map(
+                          (AdminArtworkRecord artwork) =>
+                              DropdownMenuItem<String>(
+                                value: artwork.artworkId,
+                                child: Text(artwork.title),
+                              ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          artworkId = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: garmentProductId,
+                    decoration: const InputDecoration(
+                      labelText: 'Garment product id',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: serialNumber,
+                    decoration: const InputDecoration(labelText: 'Serial number'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: itemState,
+                    decoration: const InputDecoration(labelText: 'Item state'),
+                    items: const <String>[
+                      'drafted',
+                      'minted',
+                      'in_inventory',
+                      'sold_unclaimed',
+                      'claimed',
+                    ].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          itemState = value;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _CatalogInventoryInput(
+                    artistId: artistId,
+                    artworkId: artworkId,
+                    garmentProductId: garmentProductId.text.trim(),
+                    serialNumber: serialNumber.text.trim(),
+                    itemState: itemState,
+                  ),
+                ),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  garmentProductId.dispose();
+  serialNumber.dispose();
+  return value;
 }
 
 Future<DisputeActionInput?> promptForDisputeAction(

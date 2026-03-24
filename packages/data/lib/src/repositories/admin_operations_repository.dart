@@ -30,6 +30,30 @@ abstract class AdminOperationsRepository {
     required String userId,
     required String role,
   });
+  Future<MarketplaceActionResult<AdminArtistRecord>> upsertArtist({
+    String? artistId,
+    required String displayName,
+    required String slug,
+    required int royaltyBps,
+    required String authenticityStatement,
+    required bool isActive,
+  });
+  Future<MarketplaceActionResult<AdminArtworkRecord>> upsertArtwork({
+    String? artworkId,
+    required String artistId,
+    required String title,
+    required String story,
+    required List<String> provenanceProof,
+    DateTime? creationDate,
+  });
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryItem({
+    String? itemId,
+    required String artistId,
+    required String artworkId,
+    required String garmentProductId,
+    required String serialNumber,
+    required String itemState,
+  });
 
   Future<MarketplaceActionResult<void>> flagItemStatus({
     required String itemId,

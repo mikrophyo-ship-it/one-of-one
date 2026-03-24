@@ -6,14 +6,5 @@ class MockPaymentProvider implements PaymentProvider {
   final bool shouldSucceed;
 
   @override
-  Future<PaymentIntentResult> charge({
-    required String orderId,
-    required int amount,
-  }) async {
-    return PaymentIntentResult(
-      success: shouldSucceed,
-      reference: 'mock-$orderId-$amount',
-      status: shouldSucceed ? 'captured' : 'failed',
-    );
-  }
+  String get providerKey => shouldSucceed ? 'mock_provider' : 'mock_failure';
 }

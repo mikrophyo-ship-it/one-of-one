@@ -14,7 +14,7 @@ class OrdersPanel extends StatelessWidget {
     return TableSection(
       title: 'Orders',
       subtitle:
-          'Primary resale order state, payment capture, and downstream ledger readiness.',
+          'Primary resale order state, payment capture, shipment progress, and downstream ledger readiness.',
       child: orders.isEmpty
           ? const EmptyState(message: 'No orders are available yet.')
           : SingleChildScrollView(
@@ -26,6 +26,7 @@ class OrdersPanel extends StatelessWidget {
                   DataColumn(label: Text('Buyer / seller')),
                   DataColumn(label: Text('Order status')),
                   DataColumn(label: Text('Payment')),
+                  DataColumn(label: Text('Shipment')),
                   DataColumn(label: Text('Ledgers')),
                   DataColumn(label: Text('Total')),
                   DataColumn(label: Text('Created')),
@@ -41,7 +42,7 @@ class OrdersPanel extends StatelessWidget {
                           children: <Widget>[
                             Text(order.serialNumber),
                             Text(
-                              '${order.artistName} • ${order.artworkTitle}',
+                              '${order.artistName} / ${order.artworkTitle}',
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
@@ -55,12 +56,17 @@ class OrdersPanel extends StatelessWidget {
                       DataCell(StatusPill(label: order.orderStatus)),
                       DataCell(
                         Text(
-                          '${order.paymentStatus ?? 'none'}${order.paymentProvider == null ? '' : ' • ${order.paymentProvider}'}',
+                          '${order.paymentStatus ?? 'none'}${order.paymentProvider == null ? '' : ' / ${order.paymentProvider}'}',
                         ),
                       ),
                       DataCell(
                         Text(
-                          'Seller ${order.sellerPayoutStatus ?? 'n/a'} • Royalty ${order.royaltyStatus ?? 'n/a'} • Fee ${order.platformFeeStatus ?? 'n/a'}',
+                          '${order.shipmentStatus ?? 'none'}${order.shipmentCarrier == null ? '' : ' / ${order.shipmentCarrier}'}${order.trackingNumber == null ? '' : ' / ${order.trackingNumber}'}',
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          'Seller ${order.sellerPayoutStatus ?? 'n/a'} / Royalty ${order.royaltyStatus ?? 'n/a'} / Fee ${order.platformFeeStatus ?? 'n/a'}',
                         ),
                       ),
                       DataCell(Text(formatCurrency(order.totalCents))),

@@ -62,6 +62,60 @@ class AdminOperationsService {
     return _repository.setUserRole(userId: userId, role: role);
   }
 
+  Future<MarketplaceActionResult<AdminArtistRecord>> upsertArtist({
+    String? artistId,
+    required String displayName,
+    required String slug,
+    required int royaltyBps,
+    required String authenticityStatement,
+    required bool isActive,
+  }) {
+    return _repository.upsertArtist(
+      artistId: artistId,
+      displayName: displayName,
+      slug: slug,
+      royaltyBps: royaltyBps,
+      authenticityStatement: authenticityStatement,
+      isActive: isActive,
+    );
+  }
+
+  Future<MarketplaceActionResult<AdminArtworkRecord>> upsertArtwork({
+    String? artworkId,
+    required String artistId,
+    required String title,
+    required String story,
+    required List<String> provenanceProof,
+    DateTime? creationDate,
+  }) {
+    return _repository.upsertArtwork(
+      artworkId: artworkId,
+      artistId: artistId,
+      title: title,
+      story: story,
+      provenanceProof: provenanceProof,
+      creationDate: creationDate,
+    );
+  }
+
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryItem({
+    String? itemId,
+    required String artistId,
+    required String artworkId,
+    required String garmentProductId,
+    required String serialNumber,
+    required String itemState,
+  }) {
+    return _repository.upsertInventoryItem(
+      itemId: itemId,
+      artistId: artistId,
+      artworkId: artworkId,
+      garmentProductId: garmentProductId,
+      serialNumber: serialNumber,
+      itemState: itemState,
+    );
+  }
+
   Future<MarketplaceActionResult<void>> flagItemStatus({
     required String itemId,
     required String targetState,

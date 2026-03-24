@@ -17,6 +17,9 @@ class OverviewPanel extends StatelessWidget {
           openDisputes: 0,
           activeListings: 0,
           paymentPendingOrders: 0,
+          deliveryPendingOrders: 0,
+          payoutPendingOrders: 0,
+          refundPendingOrders: 0,
           grossSalesCents: 0,
           royaltyCents: 0,
           platformFeeCents: 0,
@@ -47,6 +50,18 @@ class OverviewPanel extends StatelessWidget {
             MetricCard(
               title: 'Payment pending',
               value: '${dashboard.paymentPendingOrders}',
+            ),
+            MetricCard(
+              title: 'Delivery pending',
+              value: '${dashboard.deliveryPendingOrders}',
+            ),
+            MetricCard(
+              title: 'Payout pending',
+              value: '${dashboard.payoutPendingOrders}',
+            ),
+            MetricCard(
+              title: 'Refund pending',
+              value: '${dashboard.refundPendingOrders}',
             ),
             MetricCard(
               title: 'Gross sales',

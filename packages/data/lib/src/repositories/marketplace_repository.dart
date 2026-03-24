@@ -27,6 +27,43 @@ abstract class MarketplaceRepository {
     required String userId,
     required int priceCents,
   });
+  Future<MarketplaceActionResult<ResaleCheckoutSession>> startResaleCheckout({
+    required String itemId,
+    required String buyerUserId,
+    required String provider,
+    String? successUrl,
+    String? cancelUrl,
+  });
+  Future<MarketplaceActionResult<UniqueItem>> finalizeResaleCheckout({
+    required String orderId,
+    required String buyerUserId,
+    required String provider,
+    required String providerReference,
+    required int amountCents,
+  });
+  Future<MarketplaceActionResult<ShipmentEvent>> recordShipmentEvent({
+    required String orderId,
+    required String shipmentStatus,
+    String? carrier,
+    String? trackingNumber,
+    String? note,
+  });
+  Future<MarketplaceActionResult<UniqueItem>> confirmDelivery({
+    required String orderId,
+    required String userId,
+    String? note,
+  });
+  Future<MarketplaceActionResult<RefundRecord>> issueRefund({
+    required String orderId,
+    required int amountCents,
+    required String reason,
+    String? note,
+  });
+  Future<MarketplaceActionResult<List<SavedCollectible>>> fetchSavedItems();
+  Future<MarketplaceActionResult<List<CollectorNotification>>>
+  fetchNotifications();
+  Future<MarketplaceActionResult<void>> saveItem({required String itemId});
+  Future<MarketplaceActionResult<void>> removeSavedItem({required String itemId});
   Future<MarketplaceActionResult<UniqueItem>> buyResaleItem({
     required String itemId,
     required String buyerUserId,

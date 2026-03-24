@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'package:domain/domain.dart';
 
 import '../lib/src/demo/demo_catalog.dart';

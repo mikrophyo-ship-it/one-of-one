@@ -3,6 +3,9 @@ class AdminDashboardSnapshot {
     required this.openDisputes,
     required this.activeListings,
     required this.paymentPendingOrders,
+    required this.deliveryPendingOrders,
+    required this.payoutPendingOrders,
+    required this.refundPendingOrders,
     required this.grossSalesCents,
     required this.royaltyCents,
     required this.platformFeeCents,
@@ -13,6 +16,9 @@ class AdminDashboardSnapshot {
   final int openDisputes;
   final int activeListings;
   final int paymentPendingOrders;
+  final int deliveryPendingOrders;
+  final int payoutPendingOrders;
+  final int refundPendingOrders;
   final int grossSalesCents;
   final int royaltyCents;
   final int platformFeeCents;
@@ -135,6 +141,9 @@ class AdminOrderRecord {
     required this.listingStatus,
     required this.paymentStatus,
     required this.paymentProvider,
+    required this.shipmentStatus,
+    required this.shipmentCarrier,
+    required this.trackingNumber,
     required this.sellerPayoutStatus,
     required this.royaltyStatus,
     required this.platformFeeStatus,
@@ -157,9 +166,90 @@ class AdminOrderRecord {
   final String? listingStatus;
   final String? paymentStatus;
   final String? paymentProvider;
+  final String? shipmentStatus;
+  final String? shipmentCarrier;
+  final String? trackingNumber;
   final String? sellerPayoutStatus;
   final String? royaltyStatus;
   final String? platformFeeStatus;
+}
+
+class AdminArtistRecord {
+  const AdminArtistRecord({
+    required this.artistId,
+    required this.displayName,
+    required this.slug,
+    required this.royaltyBps,
+    required this.isActive,
+    required this.artworkCount,
+    required this.inventoryCount,
+  });
+
+  final String artistId;
+  final String displayName;
+  final String slug;
+  final int royaltyBps;
+  final bool isActive;
+  final int artworkCount;
+  final int inventoryCount;
+}
+
+class AdminArtworkRecord {
+  const AdminArtworkRecord({
+    required this.artworkId,
+    required this.artistId,
+    required this.artistName,
+    required this.title,
+    required this.creationDate,
+    required this.inventoryCount,
+  });
+
+  final String artworkId;
+  final String artistId;
+  final String artistName;
+  final String title;
+  final DateTime? creationDate;
+  final int inventoryCount;
+}
+
+class AdminInventoryRecord {
+  const AdminInventoryRecord({
+    required this.itemId,
+    required this.serialNumber,
+    required this.artistName,
+    required this.artworkTitle,
+    required this.garmentName,
+    required this.itemState,
+    required this.ownerDisplayLabel,
+  });
+
+  final String itemId;
+  final String serialNumber;
+  final String artistName;
+  final String artworkTitle;
+  final String garmentName;
+  final String itemState;
+  final String ownerDisplayLabel;
+}
+
+class AdminFinanceRecord {
+  const AdminFinanceRecord({
+    required this.orderId,
+    required this.paymentStatus,
+    required this.shipmentStatus,
+    required this.sellerPayoutStatus,
+    required this.royaltyStatus,
+    required this.platformFeeStatus,
+    required this.totalCents,
+  });
+
+  final String orderId;
+  final String paymentStatus;
+  final String shipmentStatus;
+  final String sellerPayoutStatus;
+  final String royaltyStatus;
+  final String platformFeeStatus;
+  final int totalCents;
 }
 
 class AdminAuditRecord {
@@ -205,6 +295,10 @@ class AdminOperationsSnapshot {
     required this.listings,
     required this.disputes,
     required this.orders,
+    required this.artists,
+    required this.artworks,
+    required this.inventory,
+    required this.finance,
     required this.audits,
     required this.settings,
   });
@@ -214,6 +308,10 @@ class AdminOperationsSnapshot {
   final List<AdminListingRecord> listings;
   final List<AdminDisputeRecord> disputes;
   final List<AdminOrderRecord> orders;
+  final List<AdminArtistRecord> artists;
+  final List<AdminArtworkRecord> artworks;
+  final List<AdminInventoryRecord> inventory;
+  final List<AdminFinanceRecord> finance;
   final List<AdminAuditRecord> audits;
   final PlatformSettingsSnapshot settings;
 }

@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import '../lib/src/entities/claim_result.dart';
 import '../lib/src/entities/fee_breakdown.dart';
 import '../lib/src/entities/item_state.dart';
@@ -149,6 +151,7 @@ void main() {
           buyerUserId: 'user_buyer',
           amount: 100000,
           paymentCaptured: false,
+          deliveryConfirmedAt: null,
         ),
       );
     } catch (_) {
@@ -165,12 +168,14 @@ void main() {
           state: ItemState.frozen,
           askingPrice: 100000,
         ),
-        order: const Order(
+        order: Order(
           id: 'order_blocked',
           itemId: 'item_1',
           buyerUserId: 'user_buyer',
           amount: 100000,
           paymentCaptured: true,
+          deliveryConfirmedAt: DateTime.utc(2026, 1, 2),
+          reviewWindowClosesAt: DateTime.utc(2025, 12, 31),
         ),
       );
     } catch (_) {
@@ -185,12 +190,14 @@ void main() {
         state: ItemState.salePending,
         askingPrice: 100000,
       ),
-      order: const Order(
+      order: Order(
         id: 'order_paid',
         itemId: 'item_1',
         buyerUserId: 'user_buyer',
         amount: 100000,
         paymentCaptured: true,
+        deliveryConfirmedAt: DateTime.utc(2026, 1, 2),
+        reviewWindowClosesAt: DateTime.utc(2025, 12, 31),
       ),
     );
     _expect(
@@ -224,6 +231,29 @@ void main() {
       rules.isTransitionAllowed(ItemState.disputed, ItemState.archived),
       'disputed -> archived should be allowed',
     );
+  });
+
+  _run('delivery confirmation is required before ownership transfer', () {
+    bool threw = false;
+    try {
+      rules.completeResale(
+        item: claimedItem.copyWith(
+          state: ItemState.salePending,
+          askingPrice: 100000,
+        ),
+        order: Order(
+          id: 'order_delivery_pending',
+          itemId: 'item_1',
+          buyerUserId: 'user_buyer',
+          amount: 100000,
+          paymentCaptured: true,
+          reviewWindowClosesAt: DateTime.utc(2025, 12, 31),
+        ),
+      );
+    } catch (_) {
+      threw = true;
+    }
+    _expect(threw, 'delivery confirmation should be required');
   });
 
   print('All domain rule checks passed.');

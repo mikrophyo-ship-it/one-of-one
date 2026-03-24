@@ -31,6 +31,13 @@ For ownership and resale lifecycle:
 - `public.create_resale_listing(item_id, price_cents)`
 - `public.create_resale_order(listing_id)`
 - `public.record_resale_payment_and_transfer(order_id, provider, provider_reference, amount_cents)`
+- `public.create_resale_checkout_session(listing_id, provider, success_url, cancel_url)`
+- `public.mark_resale_payment_authorized(order_id, provider, provider_reference, amount_cents)`
+- `public.confirm_resale_delivery(order_id, release_payouts, note)`
+- `public.get_my_saved_collectibles()`
+- `public.save_collectible(item_id)`
+- `public.remove_saved_collectible(item_id)`
+- `public.get_my_notifications()`
 - `public.open_dispute(item_id, reason, details, freeze_item)`
 
 ## Authenticated admin RPCs
@@ -40,6 +47,11 @@ Mutation RPCs:
 - `public.admin_moderate_listing(listing_id, action, note)`
 - `public.admin_update_dispute_status(dispute_id, status, note, release_item, release_target_state)`
 - `public.admin_update_platform_settings(platform_fee_bps, default_royalty_bps, marketplace_rules, brand_settings)`
+- `public.record_order_shipment_event(order_id, status, carrier, tracking_number, note)`
+- `public.issue_order_refund(order_id, amount_cents, reason, note)`
+- `public.admin_upsert_artist(artist_id, display_name, slug, royalty_bps, authenticity_statement, is_active)`
+- `public.admin_upsert_artwork(artwork_id, artist_id, title, story, provenance_proof, creation_date)`
+- `public.admin_upsert_inventory_item(item_id, artist_id, artwork_id, garment_product_id, serial_number, item_state)`
 
 Read RPCs:
 - `public.get_admin_dashboard_overview()`
@@ -47,6 +59,10 @@ Read RPCs:
 - `public.get_admin_listing_queue()`
 - `public.get_admin_dispute_queue()`
 - `public.get_admin_order_queue()`
+- `public.get_admin_artist_directory()`
+- `public.get_admin_artwork_directory()`
+- `public.get_admin_inventory_directory()`
+- `public.get_admin_finance_report()`
 - `public.get_admin_audit_feed()`
 
 These RPCs enforce admin-capable role checks before returning operational data.
@@ -63,19 +79,24 @@ This marks the claim code as consumed, records the owner, and creates the open o
 This is allowed only when the user is the recorded current owner and the item is in an eligible state.
 8. Another user calls `create_resale_order(listing_id)`.
 This locks the listing into `sale_pending` and creates the resale order and order_item rows.
-9. After payment success, the backend calls `record_resale_payment_and_transfer(...)`.
-This records the captured payment, marks the order paid, finalizes the ownership transfer, and writes payout, royalty, and platform fee ledgers.
-10. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing and transfer.
-11. Admin can moderate listings through `admin_moderate_listing(...)`, resolve or reject disputes through `admin_update_dispute_status(...)`, and force item restrictions like `stolen_flagged`, `frozen`, or safe release states through `admin_flag_item_status(...)`.
-12. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
+9. Checkout is initialized through `create_resale_checkout_session(...)`, which creates the server order, locks the listing, and returns provider session metadata.
+10. After the provider authorizes payment, the backend calls `mark_resale_payment_authorized(...)`.
+This records the payment authorization and starts shipment and delivery review gating without finalizing ownership yet.
+11. Shipment progress is recorded through `record_order_shipment_event(...)`.
+12. The buyer or admin confirms receipt through `confirm_resale_delivery(...)`.
+This is the point where ownership finalizes on-platform and payout, royalty, and platform fee ledgers become releasable.
+13. Refund and partial refund operations are recorded through `issue_order_refund(...)`.
+14. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing and transfer.
+15. Admin can moderate listings through `admin_moderate_listing(...)`, resolve or reject disputes through `admin_update_dispute_status(...)`, force item restrictions like `stolen_flagged`, `frozen`, or safe release states through `admin_flag_item_status(...)`, and maintain artist/artwork/inventory records through the admin upsert RPCs.
+16. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
 
 ## Local development flow
-1. Apply migrations and `supabase/seed/seed.sql`.
+1. Apply migrations (including `0008_fix_admin_role_rls_recursion.sql`) and `supabase/seed/seed.sql`.
 2. Create local users through Supabase Auth UI or app sign-up.
 3. Sign in as each user and call `upsert_my_profile(...)`.
 4. Promote one account to admin through a bootstrap admin path, then use `admin_set_user_role(...)` for later role changes.
 5. Use the seeded `sold_unclaimed` items and their packaged hidden codes for claim testing.
-6. Drive authenticity lookup, claim, listing, order, payment, dispute, moderation, and settings flows through RPCs and views rather than direct table writes.
+6. Drive authenticity lookup, claim, listing, checkout, payment authorization, shipment, delivery confirmation, refund, dispute, moderation, and settings flows through RPCs and views rather than direct table writes.
 
 ## Seed notes
 `supabase/seed/seed.sql` seeds collectible catalog and authenticity data only. It intentionally does not insert into `auth.users`.
@@ -86,6 +107,6 @@ This records the captured payment, marks the order paid, finalizes the ownership
 - The admin app now uses Supabase-backed operational reads plus admin RPCs for disputes, listing moderation, customer roles, audit viewing, freeze controls, and persisted settings.
 
 ## Remaining app integration work
-- Replace mock payment capture with a real payment provider when V1 is ready for live checkout.
-- Add deployed password-reset redirect URLs and deep-link handling for production mobile reset flows.
-- Add camera-based QR scanning and external deep-link entry for the public authenticity experience.
+- Connect provider-hosted checkout presentation and webhook reconciliation for live Stripe production credentials.
+- Add camera-based QR scanning package wiring for device hardware capture and printable QR export polish.
+- Add deployed password-reset redirect URLs and production mobile deep-link handling refinements.

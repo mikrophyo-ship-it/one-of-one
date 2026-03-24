@@ -8,6 +8,7 @@ export 'src/entities/fee_breakdown.dart';
 export 'src/entities/item_state.dart';
 export 'src/entities/listing.dart';
 export 'src/entities/marketplace_action_result.dart';
+export 'src/entities/marketplace_v2.dart';
 export 'src/entities/order.dart';
 export 'src/entities/ownership_record.dart';
 export 'src/entities/platform_user.dart';

@@ -58,7 +58,7 @@ class _CustomerRootState extends State<CustomerRoot> {
 
     workflowService = MarketplaceWorkflowService(
       repository: repository,
-      paymentProvider: const MockPaymentProvider(),
+      paymentProvider: const StripePaymentProvider(),
     );
     controller = CustomerController(
       repository: repository,
@@ -211,10 +211,8 @@ class CustomerController extends ChangeNotifier {
   String? statusMessage;
   String? errorMessage;
   PublicAuthenticityRecord? scannedAuthenticity;
-  final List<String> notifications = <String>[
-    'Afterglow No. 01 has new resale interest.',
-    'Ownership certificate ready for download.',
-  ];
+  List<CollectorNotification> notificationFeed = const <CollectorNotification>[];
+  Set<String> savedItemIds = <String>{};
 
   bool get authConfigured => _authService.isConfigured;
 
@@ -222,8 +220,14 @@ class CustomerController extends ChangeNotifier {
   List<Artwork> get artworks => _repository.artworks();
   List<UniqueItem> get items => _repository.items();
   List<Listing> get listings => _repository.activeListings();
+  List<String> get notifications => notificationFeed
+      .map((CollectorNotification item) => '${item.title}: ${item.body}')
+      .toList(growable: false);
   List<UniqueItem> get vaultItems => items
       .where((UniqueItem item) => item.currentOwnerUserId == currentUserId)
+      .toList();
+  List<UniqueItem> get savedItems => items
+      .where((UniqueItem item) => savedItemIds.contains(item.id))
       .toList();
 
   Future<void> initialize() async {
@@ -235,6 +239,7 @@ class CustomerController extends ChangeNotifier {
           ? null
           : 'Collector session restored from Supabase.',
     );
+    unawaited(handleInitialAuthenticityLink());
   }
 
   Artist? artistFor(UniqueItem item) {
@@ -328,6 +333,16 @@ class CustomerController extends ChangeNotifier {
     );
   }
 
+  Future<void> handleInitialAuthenticityLink() async {
+    final String? qrToken = Uri.base.queryParameters['qr'];
+    if (qrToken == null || qrToken.trim().isEmpty) {
+      return;
+    }
+    await lookupPublicAuthenticity(qrToken: qrToken);
+    index = 2;
+    notifyListeners();
+  }
+
   void setIndex(int value) {
     index = value;
     notifyListeners();
@@ -379,9 +394,9 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(
-            0,
-            'Ownership refreshed for ${item.serialNumber}.',
+          _prependLocalNotification(
+            title: 'Ownership updated',
+            body: 'Ownership refreshed for ${item.serialNumber}.',
           );
         }
         return message;
@@ -406,9 +421,9 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(
-            0,
-            'Ownership refreshed for ${item.serialNumber}.',
+          _prependLocalNotification(
+            title: 'Ownership updated',
+            body: 'Ownership refreshed for ${item.serialNumber}.',
           );
         }
         return message;
@@ -433,9 +448,9 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (Listing? listing, String message) {
         if (listing != null) {
-          notifications.insert(
-            0,
-            'Listing ${listing.id} is live for on-platform resale.',
+          _prependLocalNotification(
+            title: 'Listing live',
+            body: 'Listing ${listing.id} is live for on-platform resale.',
           );
         }
         return message;
@@ -456,9 +471,34 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(
-            0,
-            '${item.serialNumber} transferred after successful on-platform checkout.',
+          _prependLocalNotification(
+            title: 'Checkout started',
+            body:
+                '${item.serialNumber} payment is authorized. Ownership transfers only after delivery review.',
+          );
+        }
+        return message;
+      },
+    );
+  }
+
+  Future<String> confirmDelivery({required String orderId}) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
+    return _runAction<UniqueItem>(
+      operation: () => _workflowService.confirmDelivery(
+        orderId: orderId,
+        userId: currentUserId,
+        note: 'Collector confirmed delivery from the customer app.',
+      ),
+      onSuccess: (UniqueItem? item, String message) {
+        if (item != null) {
+          _prependLocalNotification(
+            title: 'Delivery confirmed',
+            body: '${item.serialNumber} is now eligible for payout release.',
           );
         }
         return message;
@@ -485,14 +525,35 @@ class CustomerController extends ChangeNotifier {
       ),
       onSuccess: (UniqueItem? item, String message) {
         if (item != null) {
-          notifications.insert(
-            0,
-            '${item.serialNumber} moved to ${item.state.key.replaceAll('_', ' ')} for review.',
+          _prependLocalNotification(
+            title: 'Dispute opened',
+            body:
+                '${item.serialNumber} moved to ${item.state.key.replaceAll('_', ' ')} for review.',
           );
         }
         return message;
       },
     );
+  }
+
+  Future<String> toggleSavedItem(String itemId) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
+    final bool isSaved = savedItemIds.contains(itemId);
+    final MarketplaceActionResult<void> result = isSaved
+        ? await _workflowService.removeSavedItem(itemId: itemId)
+        : await _workflowService.saveItem(itemId: itemId);
+    if (result.success) {
+      await _refreshCompanionData();
+      statusMessage = result.message;
+    } else {
+      errorMessage = result.message;
+    }
+    notifyListeners();
+    return result.message;
   }
 
   Future<void> _runAuthRequest({
@@ -536,6 +597,8 @@ class CustomerController extends ChangeNotifier {
       currentDisplayName = null;
       isAuthenticated = false;
       await _repository.refresh(userId: '');
+      notificationFeed = const <CollectorNotification>[];
+      savedItemIds = <String>{};
       isInitializing = false;
       isBusy = false;
       if (restoredMessage != null) {
@@ -552,6 +615,7 @@ class CustomerController extends ChangeNotifier {
     currentUserEmail = user.email;
     currentDisplayName = _displayNameForUser(user);
     await _repository.refresh(userId: user.id);
+    await _refreshCompanionData();
     isAuthenticated = true;
     isInitializing = false;
     isBusy = false;
@@ -610,6 +674,38 @@ class CustomerController extends ChangeNotifier {
       return email.split('@').first;
     }
     return 'Collector';
+  }
+
+  Future<void> _refreshCompanionData() async {
+    final MarketplaceActionResult<List<CollectorNotification>> notifications =
+        await _workflowService.fetchNotifications();
+    if (notifications.success && notifications.data != null) {
+      notificationFeed = notifications.data!;
+    }
+
+    final MarketplaceActionResult<List<SavedCollectible>> saved =
+        await _workflowService.fetchSavedItems();
+    if (saved.success && saved.data != null) {
+      savedItemIds = saved.data!
+          .map((SavedCollectible item) => item.itemId)
+          .toSet();
+    }
+  }
+
+  void _prependLocalNotification({
+    required String title,
+    required String body,
+  }) {
+    notificationFeed = <CollectorNotification>[
+      CollectorNotification(
+        id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+        title: title,
+        body: body,
+        createdAt: DateTime.now(),
+        read: false,
+      ),
+      ...notificationFeed,
+    ];
   }
 
   @override
@@ -1115,6 +1211,14 @@ class ExploreScreen extends StatelessWidget {
                     ? 'Held'
                     : formatCurrency(item.askingPrice!),
               ),
+              leading: IconButton(
+                onPressed: () => controller.toggleSavedItem(item.id),
+                icon: Icon(
+                  controller.savedItemIds.contains(item.id)
+                      ? Icons.bookmark
+                      : Icons.bookmark_border,
+                ),
+              ),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -1252,7 +1356,7 @@ class ItemDetailScreen extends StatelessWidget {
                       ).showSnackBar(SnackBar(content: Text(message)));
                     }
                   },
-                  child: const Text('Buy resale item'),
+                  child: const Text('Authorize checkout'),
                 ),
               if (item.currentOwnerUserId == controller.currentUserId &&
                   !item.state.isRestricted)
@@ -1270,6 +1374,23 @@ class ItemDetailScreen extends StatelessWidget {
                   },
                   child: const Text('Resell item'),
                 ),
+              OutlinedButton(
+                onPressed: () async {
+                  final String message = await controller.toggleSavedItem(
+                    item.id,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(message)));
+                  }
+                },
+                child: Text(
+                  controller.savedItemIds.contains(item.id)
+                      ? 'Unsave'
+                      : 'Save item',
+                ),
+              ),
               OutlinedButton(
                 onPressed: () async {
                   final String message = await controller.openDispute(
@@ -1335,7 +1456,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Enter the QR token to resolve privacy-safe authenticity details from Supabase. Hidden claim codes stay separate from the public authenticity route.',
+                  'Use the camera-ready public token or paste a deep-link token to resolve privacy-safe authenticity details from Supabase. Hidden claim codes stay separate from the public authenticity route.',
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -1343,7 +1464,7 @@ class _ScanScreenState extends State<ScanScreen> {
                   decoration: const InputDecoration(
                     labelText: 'QR token',
                     helperText:
-                        'Example: the token encoded inside the public authenticity QR.',
+                        'Accepts the token encoded in the QR or a public deep-link query value.',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1510,6 +1631,26 @@ class VaultScreen extends StatelessWidget {
       children: <Widget>[
         Text('My collection', style: Theme.of(context).textTheme.displaySmall),
         const SizedBox(height: 12),
+        if (controller.savedItems.isNotEmpty) ...<Widget>[
+          const Card(
+            child: ListTile(
+              title: Text('Saved items'),
+              subtitle: Text(
+                'Watchlisted collectibles for future resale drops and alerts.',
+              ),
+            ),
+          ),
+          ...controller.savedItems.map(
+            (UniqueItem item) => Card(
+              child: ListTile(
+                title: Text(item.productName),
+                subtitle: Text(item.serialNumber),
+                trailing: const Icon(Icons.bookmark),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (controller.vaultItems.isEmpty)
           const Card(
             child: ListTile(
@@ -1568,8 +1709,20 @@ class ProfileScreen extends StatelessWidget {
           child: ListTile(
             title: Text('Transaction history'),
             subtitle: Text(
-              'Primary purchase, resale activity, royalty-aware transfers',
+              'Primary purchase, delivery-gated resale activity, royalty-aware transfers',
             ),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            title: const Text('Saved items'),
+            subtitle: Text('${controller.savedItemIds.length} collectible(s) tracked'),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            title: const Text('Notifications'),
+            subtitle: Text('${controller.notifications.length} update(s) ready'),
           ),
         ),
         const Card(

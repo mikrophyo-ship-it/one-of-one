@@ -111,6 +111,8 @@ class DemoCatalog implements MarketplaceRepository {
   late final Map<String, String> _qrTokens;
   late final List<Listing> _listings;
   late final List<OwnershipRecord> _ownershipRecords;
+  final List<SavedCollectible> _savedItems = <SavedCollectible>[];
+  final List<CollectorNotification> _notifications = <CollectorNotification>[];
 
   @override
   List<Listing> activeListings() => List<Listing>.unmodifiable(
@@ -177,6 +179,8 @@ class DemoCatalog implements MarketplaceRepository {
         buyerUserId: buyerUserId,
         amount: listing.askingPrice,
         paymentCaptured: true,
+        deliveryConfirmedAt: DateTime.now(),
+        reviewWindowClosesAt: DateTime.now().subtract(const Duration(hours: 1)),
       ),
     );
 
@@ -197,6 +201,25 @@ class DemoCatalog implements MarketplaceRepository {
       message:
           'Payment captured with reference $providerReference. Ownership transferred on-platform.',
       data: transferred,
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<UniqueItem>> confirmDelivery({
+    required String orderId,
+    required String userId,
+    String? note,
+  }) async {
+    final UniqueItem? item = _items.where((UniqueItem candidate) {
+      return candidate.currentOwnerUserId == userId;
+    }).cast<UniqueItem?>().firstWhere(
+      (UniqueItem? candidate) => candidate != null,
+      orElse: () => null,
+    );
+    return MarketplaceActionResult<UniqueItem>(
+      success: true,
+      message: note ?? 'Delivery confirmed.',
+      data: item,
     );
   }
 
@@ -326,6 +349,66 @@ class DemoCatalog implements MarketplaceRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<List<CollectorNotification>>>
+  fetchNotifications() async {
+    return MarketplaceActionResult<List<CollectorNotification>>(
+      success: true,
+      message: 'Demo notifications ready.',
+      data: List<CollectorNotification>.unmodifiable(_notifications),
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<List<SavedCollectible>>> fetchSavedItems() async {
+    return MarketplaceActionResult<List<SavedCollectible>>(
+      success: true,
+      message: 'Demo saved items ready.',
+      data: List<SavedCollectible>.unmodifiable(_savedItems),
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<UniqueItem>> finalizeResaleCheckout({
+    required String orderId,
+    required String buyerUserId,
+    required String provider,
+    required String providerReference,
+    required int amountCents,
+  }) async {
+    final UniqueItem item = _items.firstWhere(
+      (UniqueItem candidate) => candidate.askingPrice == amountCents,
+      orElse: () => _items.first,
+    );
+    return buyResaleItem(
+      itemId: item.id,
+      buyerUserId: buyerUserId,
+      providerReference: providerReference,
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<RefundRecord>> issueRefund({
+    required String orderId,
+    required int amountCents,
+    required String reason,
+    String? note,
+  }) async {
+    return MarketplaceActionResult<RefundRecord>(
+      success: true,
+      message: 'Demo refund recorded.',
+      data: RefundRecord(
+        refundId: 'refund_$orderId',
+        orderId: orderId,
+        status: 'refunded',
+        amountCents: amountCents,
+        reason: reason,
+        providerReference: 'mock-refund-$orderId',
+        createdAt: DateTime.now(),
+      ),
+    );
+  }
+
+  @override
   String? currentUserId() => 'user_collector_1';
 
   @override
@@ -437,7 +520,72 @@ class DemoCatalog implements MarketplaceRepository {
       );
 
   @override
+  Future<MarketplaceActionResult<ShipmentEvent>> recordShipmentEvent({
+    required String orderId,
+    required String shipmentStatus,
+    String? carrier,
+    String? trackingNumber,
+    String? note,
+  }) async {
+    return MarketplaceActionResult<ShipmentEvent>(
+      success: true,
+      message: 'Demo shipment event saved.',
+      data: ShipmentEvent(
+        orderId: orderId,
+        status: shipmentStatus,
+        occurredAt: DateTime.now(),
+        carrier: carrier,
+        trackingNumber: trackingNumber,
+        note: note,
+      ),
+    );
+  }
+
+  @override
   Future<void> refresh({required String userId}) async {}
+
+  @override
+  Future<MarketplaceActionResult<void>> removeSavedItem({
+    required String itemId,
+  }) async {
+    _savedItems.removeWhere((SavedCollectible item) => item.itemId == itemId);
+    return const MarketplaceActionResult<void>(
+      success: true,
+      message: 'Demo saved item removed.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> saveItem({required String itemId}) async {
+    _savedItems.add(SavedCollectible(itemId: itemId, savedAt: DateTime.now()));
+    return const MarketplaceActionResult<void>(
+      success: true,
+      message: 'Demo saved item added.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<ResaleCheckoutSession>> startResaleCheckout({
+    required String itemId,
+    required String buyerUserId,
+    required String provider,
+    String? successUrl,
+    String? cancelUrl,
+  }) async {
+    return MarketplaceActionResult<ResaleCheckoutSession>(
+      success: true,
+      message: 'Demo checkout session created.',
+      data: ResaleCheckoutSession(
+        orderId: 'order-$itemId',
+        provider: provider,
+        status: 'requires_action',
+        providerReference: 'demo-$itemId-$buyerUserId',
+        checkoutUrl: successUrl,
+        clientSecret: 'secret-$itemId',
+        expiresAt: DateTime.now().add(const Duration(minutes: 30)),
+      ),
+    );
+  }
 
   String? _itemIdForQrToken(String qrToken) {
     for (final MapEntry<String, String> entry in _qrTokens.entries) {

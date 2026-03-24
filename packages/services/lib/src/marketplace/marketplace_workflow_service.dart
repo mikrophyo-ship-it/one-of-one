@@ -54,6 +54,95 @@ class MarketplaceWorkflowService {
     );
   }
 
+  Future<MarketplaceActionResult<ResaleCheckoutSession>> startResaleCheckout({
+    required String itemId,
+    required String buyerUserId,
+    String? successUrl,
+    String? cancelUrl,
+  }) {
+    return _repository.startResaleCheckout(
+      itemId: itemId,
+      buyerUserId: buyerUserId,
+      provider: _paymentProvider.providerKey,
+      successUrl: successUrl,
+      cancelUrl: cancelUrl,
+    );
+  }
+
+  Future<MarketplaceActionResult<UniqueItem>> finalizeResaleCheckout({
+    required String orderId,
+    required String buyerUserId,
+    required String providerReference,
+    required int amountCents,
+  }) {
+    return _repository.finalizeResaleCheckout(
+      orderId: orderId,
+      buyerUserId: buyerUserId,
+      provider: _paymentProvider.providerKey,
+      providerReference: providerReference,
+      amountCents: amountCents,
+    );
+  }
+
+  Future<MarketplaceActionResult<ShipmentEvent>> recordShipmentEvent({
+    required String orderId,
+    required String shipmentStatus,
+    String? carrier,
+    String? trackingNumber,
+    String? note,
+  }) {
+    return _repository.recordShipmentEvent(
+      orderId: orderId,
+      shipmentStatus: shipmentStatus,
+      carrier: carrier,
+      trackingNumber: trackingNumber,
+      note: note,
+    );
+  }
+
+  Future<MarketplaceActionResult<UniqueItem>> confirmDelivery({
+    required String orderId,
+    required String userId,
+    String? note,
+  }) {
+    return _repository.confirmDelivery(
+      orderId: orderId,
+      userId: userId,
+      note: note,
+    );
+  }
+
+  Future<MarketplaceActionResult<RefundRecord>> issueRefund({
+    required String orderId,
+    required int amountCents,
+    required String reason,
+    String? note,
+  }) {
+    return _repository.issueRefund(
+      orderId: orderId,
+      amountCents: amountCents,
+      reason: reason,
+      note: note,
+    );
+  }
+
+  Future<MarketplaceActionResult<List<SavedCollectible>>> fetchSavedItems() {
+    return _repository.fetchSavedItems();
+  }
+
+  Future<MarketplaceActionResult<List<CollectorNotification>>>
+  fetchNotifications() {
+    return _repository.fetchNotifications();
+  }
+
+  Future<MarketplaceActionResult<void>> saveItem({required String itemId}) {
+    return _repository.saveItem(itemId: itemId);
+  }
+
+  Future<MarketplaceActionResult<void>> removeSavedItem({required String itemId}) {
+    return _repository.removeSavedItem(itemId: itemId);
+  }
+
   Future<MarketplaceActionResult<UniqueItem>> buyResaleItem({
     required String itemId,
     required String buyerUserId,
@@ -66,21 +155,20 @@ class MarketplaceWorkflowService {
       );
     }
 
-    final PaymentIntentResult payment = await _paymentProvider.charge(
-      orderId: 'order-$itemId-$buyerUserId',
-      amount: item.askingPrice!,
-    );
-    if (!payment.success) {
-      return const MarketplaceActionResult<UniqueItem>(
+    final MarketplaceActionResult<ResaleCheckoutSession> checkout =
+        await startResaleCheckout(itemId: itemId, buyerUserId: buyerUserId);
+    if (!checkout.success || checkout.data == null) {
+      return MarketplaceActionResult<UniqueItem>(
         success: false,
-        message: 'Payment failed. Ownership remains unchanged.',
+        message: checkout.message,
       );
     }
 
-    return _repository.buyResaleItem(
-      itemId: itemId,
+    return finalizeResaleCheckout(
+      orderId: checkout.data!.orderId,
       buyerUserId: buyerUserId,
-      providerReference: payment.reference,
+      providerReference: checkout.data!.providerReference,
+      amountCents: item.askingPrice!,
     );
   }
 

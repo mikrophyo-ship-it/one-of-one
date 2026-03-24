@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_non_null_assertion
+
 import 'package:domain/domain.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -48,6 +50,14 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
           (await _client!.rpc('get_admin_dispute_queue')) as List<dynamic>;
       final List<dynamic> orderRows =
           (await _client!.rpc('get_admin_order_queue')) as List<dynamic>;
+      final List<dynamic> artistRows =
+          (await _client!.rpc('get_admin_artist_directory')) as List<dynamic>;
+      final List<dynamic> artworkRows =
+          (await _client!.rpc('get_admin_artwork_directory')) as List<dynamic>;
+      final List<dynamic> inventoryRows =
+          (await _client!.rpc('get_admin_inventory_directory')) as List<dynamic>;
+      final List<dynamic> financeRows =
+          (await _client!.rpc('get_admin_finance_report')) as List<dynamic>;
       final List<dynamic> auditRows =
           (await _client!.rpc('get_admin_audit_feed')) as List<dynamic>;
       final Map<String, dynamic> settingsRow = await _client!
@@ -75,6 +85,18 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
             .toList(),
         orders: orderRows
             .map((dynamic row) => _orderFromRow(row as Map<String, dynamic>))
+            .toList(),
+        artists: artistRows
+            .map((dynamic row) => _artistFromRow(row as Map<String, dynamic>))
+            .toList(),
+        artworks: artworkRows
+            .map((dynamic row) => _artworkFromRow(row as Map<String, dynamic>))
+            .toList(),
+        inventory: inventoryRows
+            .map((dynamic row) => _inventoryFromRow(row as Map<String, dynamic>))
+            .toList(),
+        finance: financeRows
+            .map((dynamic row) => _financeFromRow(row as Map<String, dynamic>))
             .toList(),
         audits: auditRows
             .map((dynamic row) => _auditFromRow(row as Map<String, dynamic>))
@@ -197,6 +219,135 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       );
     } on PostgrestException catch (error) {
       return MarketplaceActionResult<AdminCustomerRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminArtistRecord>> upsertArtist({
+    String? artistId,
+    required String displayName,
+    required String slug,
+    required int royaltyBps,
+    required String authenticityStatement,
+    required bool isActive,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminArtistRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'admin_upsert_artist',
+        params: <String, dynamic>{
+          'p_artist_id': artistId,
+          'p_display_name': displayName,
+          'p_slug': slug,
+          'p_royalty_bps': royaltyBps,
+          'p_authenticity_statement': authenticityStatement,
+          'p_is_active': isActive,
+        },
+      );
+      await refresh();
+      return MarketplaceActionResult<AdminArtistRecord>(
+        success: true,
+        message: 'Artist saved.',
+        data: _findArtist(artistId, slug),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminArtistRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminArtworkRecord>> upsertArtwork({
+    String? artworkId,
+    required String artistId,
+    required String title,
+    required String story,
+    required List<String> provenanceProof,
+    DateTime? creationDate,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminArtworkRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'admin_upsert_artwork',
+        params: <String, dynamic>{
+          'p_artwork_id': artworkId,
+          'p_artist_id': artistId,
+          'p_title': title,
+          'p_story': story,
+          'p_provenance_proof': provenanceProof,
+          'p_creation_date': creationDate?.toIso8601String(),
+        },
+      );
+      await refresh();
+      return MarketplaceActionResult<AdminArtworkRecord>(
+        success: true,
+        message: 'Artwork saved.',
+        data: _findArtwork(artworkId, title),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminArtworkRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryItem({
+    String? itemId,
+    required String artistId,
+    required String artworkId,
+    required String garmentProductId,
+    required String serialNumber,
+    required String itemState,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'admin_upsert_inventory_item',
+        params: <String, dynamic>{
+          'p_item_id': itemId,
+          'p_artist_id': artistId,
+          'p_artwork_id': artworkId,
+          'p_garment_product_id': garmentProductId,
+          'p_serial_number': serialNumber,
+          'p_item_state': itemState,
+        },
+      );
+      await refresh();
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: true,
+        message: 'Inventory item saved.',
+        data: _findInventory(itemId, serialNumber),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminInventoryRecord>(
         success: false,
         message: _friendlyMessage(error.message),
       );
@@ -330,6 +481,9 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       openDisputes: _toInt(row['open_disputes']),
       activeListings: _toInt(row['active_listings']),
       paymentPendingOrders: _toInt(row['payment_pending_orders']),
+      deliveryPendingOrders: _toInt(row['delivery_pending_orders']),
+      payoutPendingOrders: _toInt(row['payout_pending_orders']),
+      refundPendingOrders: _toInt(row['refund_pending_orders']),
       grossSalesCents: _toInt(row['gross_sales_cents']),
       royaltyCents: _toInt(row['royalty_cents']),
       platformFeeCents: _toInt(row['platform_fee_cents']),
@@ -411,9 +565,59 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       listingStatus: _nullableString(row['listing_status']),
       paymentStatus: _nullableString(row['payment_status']),
       paymentProvider: _nullableString(row['payment_provider']),
+      shipmentStatus: _nullableString(row['shipment_status']),
+      shipmentCarrier: _nullableString(row['shipment_carrier']),
+      trackingNumber: _nullableString(row['tracking_number']),
       sellerPayoutStatus: _nullableString(row['seller_payout_status']),
       royaltyStatus: _nullableString(row['royalty_status']),
       platformFeeStatus: _nullableString(row['platform_fee_status']),
+    );
+  }
+
+  AdminArtistRecord _artistFromRow(Map<String, dynamic> row) {
+    return AdminArtistRecord(
+      artistId: row['artist_id'].toString(),
+      displayName: row['display_name'].toString(),
+      slug: row['slug'].toString(),
+      royaltyBps: _toInt(row['royalty_bps']),
+      isActive: row['is_active'] == true,
+      artworkCount: _toInt(row['artwork_count']),
+      inventoryCount: _toInt(row['inventory_count']),
+    );
+  }
+
+  AdminArtworkRecord _artworkFromRow(Map<String, dynamic> row) {
+    return AdminArtworkRecord(
+      artworkId: row['artwork_id'].toString(),
+      artistId: row['artist_id'].toString(),
+      artistName: row['artist_name'].toString(),
+      title: row['title'].toString(),
+      creationDate: _nullableDateTime(row['creation_date']),
+      inventoryCount: _toInt(row['inventory_count']),
+    );
+  }
+
+  AdminInventoryRecord _inventoryFromRow(Map<String, dynamic> row) {
+    return AdminInventoryRecord(
+      itemId: row['item_id'].toString(),
+      serialNumber: row['serial_number'].toString(),
+      artistName: row['artist_name'].toString(),
+      artworkTitle: row['artwork_title'].toString(),
+      garmentName: row['garment_name'].toString(),
+      itemState: row['item_state'].toString(),
+      ownerDisplayLabel: row['owner_display_label'].toString(),
+    );
+  }
+
+  AdminFinanceRecord _financeFromRow(Map<String, dynamic> row) {
+    return AdminFinanceRecord(
+      orderId: row['order_id'].toString(),
+      paymentStatus: row['payment_status'].toString(),
+      shipmentStatus: row['shipment_status'].toString(),
+      sellerPayoutStatus: row['seller_payout_status'].toString(),
+      royaltyStatus: row['royalty_status'].toString(),
+      platformFeeStatus: row['platform_fee_status'].toString(),
+      totalCents: _toInt(row['total_cents']),
     );
   }
 
@@ -470,6 +674,38 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
         in _snapshot?.listings ?? const <AdminListingRecord>[]) {
       if (listing.listingId == listingId) {
         return listing;
+      }
+    }
+    return null;
+  }
+
+  AdminArtistRecord? _findArtist(String? artistId, String slug) {
+    for (final AdminArtistRecord artist
+        in _snapshot?.artists ?? const <AdminArtistRecord>[]) {
+      if ((artistId != null && artist.artistId == artistId) || artist.slug == slug) {
+        return artist;
+      }
+    }
+    return null;
+  }
+
+  AdminArtworkRecord? _findArtwork(String? artworkId, String title) {
+    for (final AdminArtworkRecord artwork
+        in _snapshot?.artworks ?? const <AdminArtworkRecord>[]) {
+      if ((artworkId != null && artwork.artworkId == artworkId) ||
+          artwork.title == title) {
+        return artwork;
+      }
+    }
+    return null;
+  }
+
+  AdminInventoryRecord? _findInventory(String? itemId, String serialNumber) {
+    for (final AdminInventoryRecord inventory
+        in _snapshot?.inventory ?? const <AdminInventoryRecord>[]) {
+      if ((itemId != null && inventory.itemId == itemId) ||
+          inventory.serialNumber == serialNumber) {
+        return inventory;
       }
     }
     return null;

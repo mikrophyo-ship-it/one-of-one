@@ -87,6 +87,12 @@ class MarketplaceRules {
     if (!order.paymentCaptured) {
       throw StateError('Ownership cannot transfer before payment capture.');
     }
+    if (!isDeliverySatisfied(order)) {
+      throw StateError('Ownership cannot transfer before delivery is confirmed.');
+    }
+    if (!isReviewWindowSatisfied(order)) {
+      throw StateError('Ownership cannot transfer before the delivery review window closes.');
+    }
     if (blocksMarketplaceAction(item.state)) {
       throw StateError('Restricted items cannot be transferred.');
     }
@@ -144,6 +150,10 @@ class MarketplaceRules {
     };
     return allowed[from]?.contains(to) ?? false;
   }
+
+  bool isDeliverySatisfied(Order order) => order.deliverySatisfied;
+
+  bool isReviewWindowSatisfied(Order order) => order.reviewWindowSatisfied;
 
   int _basisPoints(int amount, int bps) => ((amount * bps) / 10000).round();
 }

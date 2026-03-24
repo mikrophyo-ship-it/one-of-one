@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_non_null_assertion
+
 import 'package:domain/domain.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -20,6 +22,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   Map<String, String> _qrTokensByItemId = <String, String>{};
   Map<String, List<OwnershipRecord>> _histories =
       <String, List<OwnershipRecord>>{};
+  List<SavedCollectible> _savedItems = <SavedCollectible>[];
+  List<CollectorNotification> _notifications = <CollectorNotification>[];
 
   @override
   List<Listing> activeListings() => List<Listing>.unmodifiable(_listings);
@@ -60,12 +64,15 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     }
 
     try {
-      final dynamic orderId = await _client!.rpc(
-        'create_resale_order',
+      final dynamic session = await _client!.rpc(
+        'create_resale_checkout_session',
         params: <String, dynamic>{'p_listing_id': listing.id},
       );
+      final Map<String, dynamic> sessionMap =
+          session as Map<String, dynamic>? ?? const <String, dynamic>{};
+      final dynamic orderId = sessionMap['order_id'];
       await _client!.rpc(
-        'record_resale_payment_and_transfer',
+        'mark_resale_payment_authorized',
         params: <String, dynamic>{
           'p_order_id': orderId,
           'p_provider': 'mock_provider',
@@ -73,10 +80,18 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
           'p_amount_cents': listing.askingPrice,
         },
       );
+      await _client!.rpc(
+        'confirm_resale_delivery',
+        params: <String, dynamic>{
+          'p_order_id': orderId,
+          'p_release_payouts': true,
+          'p_note': 'Mock workflow auto-confirmed delivery.',
+        },
+      );
       await refresh(userId: buyerUserId);
       return MarketplaceActionResult<UniqueItem>(
         success: true,
-        message: 'Payment captured and ownership transferred on-platform.',
+        message: 'Payment recorded and ownership transferred after delivery confirmation.',
         data: itemById(itemId),
       );
     } on PostgrestException catch (error) {
@@ -197,6 +212,189 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<UniqueItem>> confirmDelivery({
+    required String orderId,
+    required String userId,
+    String? note,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final dynamic row = await _client!.rpc(
+        'confirm_resale_delivery',
+        params: <String, dynamic>{
+          'p_order_id': orderId,
+          'p_release_payouts': true,
+          'p_note': note,
+        },
+      );
+      await refresh(userId: userId);
+      final String? itemId = (row as Map<String, dynamic>?)?['item_id']
+          ?.toString();
+      return MarketplaceActionResult<UniqueItem>(
+        success: true,
+        message: 'Delivery confirmed and payout release queued.',
+        data: itemId == null ? null : itemById(itemId),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<List<CollectorNotification>>>
+  fetchNotifications() async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<List<CollectorNotification>>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final List<dynamic> rows =
+          (await _client!.rpc('get_my_notifications')) as List<dynamic>;
+      _notifications = rows
+          .map(
+            (dynamic row) => _notificationFromRow(row as Map<String, dynamic>),
+          )
+          .toList();
+      return MarketplaceActionResult<List<CollectorNotification>>(
+        success: true,
+        message: 'Collector notifications refreshed.',
+        data: List<CollectorNotification>.unmodifiable(_notifications),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<List<CollectorNotification>>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<List<SavedCollectible>>> fetchSavedItems() async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<List<SavedCollectible>>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final List<dynamic> rows =
+          (await _client!.rpc('get_my_saved_collectibles')) as List<dynamic>;
+      _savedItems = rows
+          .map((dynamic row) => _savedItemFromRow(row as Map<String, dynamic>))
+          .toList();
+      return MarketplaceActionResult<List<SavedCollectible>>(
+        success: true,
+        message: 'Saved collectibles refreshed.',
+        data: List<SavedCollectible>.unmodifiable(_savedItems),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<List<SavedCollectible>>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<UniqueItem>> finalizeResaleCheckout({
+    required String orderId,
+    required String buyerUserId,
+    required String provider,
+    required String providerReference,
+    required int amountCents,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final Map<String, dynamic> paymentRow =
+          await _client!.rpc(
+                'mark_resale_payment_authorized',
+                params: <String, dynamic>{
+                  'p_order_id': orderId,
+                  'p_provider': provider,
+                  'p_provider_reference': providerReference,
+                  'p_amount_cents': amountCents,
+                },
+              )
+              as Map<String, dynamic>;
+      await refresh(userId: buyerUserId);
+      final String? itemId = paymentRow['item_id']?.toString();
+      return MarketplaceActionResult<UniqueItem>(
+        success: true,
+        message: 'Payment authorized. Ownership will transfer after delivery review.',
+        data: itemId == null ? null : itemById(itemId),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<RefundRecord>> issueRefund({
+    required String orderId,
+    required int amountCents,
+    required String reason,
+    String? note,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<RefundRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final Map<String, dynamic> row =
+          await _client!.rpc(
+                'issue_order_refund',
+                params: <String, dynamic>{
+                  'p_order_id': orderId,
+                  'p_amount_cents': amountCents,
+                  'p_reason': reason,
+                  'p_note': note,
+                },
+              )
+              as Map<String, dynamic>;
+      return MarketplaceActionResult<RefundRecord>(
+        success: true,
+        message: 'Refund workflow recorded.',
+        data: _refundFromRow(row),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<RefundRecord>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
   String? currentUserId() => _client?.auth.currentUser?.id;
 
   @override
@@ -299,6 +497,48 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       );
 
   @override
+  Future<MarketplaceActionResult<ShipmentEvent>> recordShipmentEvent({
+    required String orderId,
+    required String shipmentStatus,
+    String? carrier,
+    String? trackingNumber,
+    String? note,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<ShipmentEvent>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final Map<String, dynamic> row =
+          await _client!.rpc(
+                'record_order_shipment_event',
+                params: <String, dynamic>{
+                  'p_order_id': orderId,
+                  'p_status': shipmentStatus,
+                  'p_carrier': carrier,
+                  'p_tracking_number': trackingNumber,
+                  'p_note': note,
+                },
+              )
+              as Map<String, dynamic>;
+      return MarketplaceActionResult<ShipmentEvent>(
+        success: true,
+        message: 'Shipment event logged.',
+        data: _shipmentEventFromRow(row),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<ShipmentEvent>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
   Future<void> refresh({required String userId}) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
@@ -308,6 +548,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       _listings = <Listing>[];
       _qrTokensByItemId = <String, String>{};
       _histories = <String, List<OwnershipRecord>>{};
+      _savedItems = <SavedCollectible>[];
+      _notifications = <CollectorNotification>[];
       return;
     }
 
@@ -323,9 +565,15 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
         .select();
 
     List<dynamic> myCollectibleRows = <dynamic>[];
+    List<dynamic> savedItemRows = <dynamic>[];
+    List<dynamic> notificationRows = <dynamic>[];
     if (currentUserId() != null) {
       myCollectibleRows =
           (await _client!.rpc('get_my_collectibles')) as List<dynamic>;
+      savedItemRows =
+          (await _client!.rpc('get_my_saved_collectibles')) as List<dynamic>;
+      notificationRows =
+          (await _client!.rpc('get_my_notifications')) as List<dynamic>;
     }
 
     _artists = artistRows
@@ -387,6 +635,115 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       );
     _listings = publicListings;
     _histories = histories;
+    _savedItems = savedItemRows
+        .map((dynamic row) => _savedItemFromRow(row as Map<String, dynamic>))
+        .toList();
+    _notifications = notificationRows
+        .map(
+          (dynamic row) => _notificationFromRow(row as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> removeSavedItem({
+    required String itemId,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(success: false, message: configError);
+    }
+
+    try {
+      await _client!.rpc(
+        'remove_saved_collectible',
+        params: <String, dynamic>{'p_item_id': itemId},
+      );
+      _savedItems.removeWhere((SavedCollectible item) => item.itemId == itemId);
+      return const MarketplaceActionResult<void>(
+        success: true,
+        message: 'Collectible removed from saved list.',
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> saveItem({required String itemId}) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(success: false, message: configError);
+    }
+
+    try {
+      await _client!.rpc(
+        'save_collectible',
+        params: <String, dynamic>{'p_item_id': itemId},
+      );
+      await fetchSavedItems();
+      return const MarketplaceActionResult<void>(
+        success: true,
+        message: 'Collectible saved to your watchlist.',
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<ResaleCheckoutSession>> startResaleCheckout({
+    required String itemId,
+    required String buyerUserId,
+    required String provider,
+    String? successUrl,
+    String? cancelUrl,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<ResaleCheckoutSession>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    final Listing? listing = _activeListingForItem(itemId);
+    if (listing == null) {
+      return const MarketplaceActionResult<ResaleCheckoutSession>(
+        success: false,
+        message: 'Active resale listing not found.',
+      );
+    }
+
+    try {
+      final Map<String, dynamic> row =
+          await _client!.rpc(
+                'create_resale_checkout_session',
+                params: <String, dynamic>{
+                  'p_listing_id': listing.id,
+                  'p_provider': provider,
+                  'p_success_url': successUrl,
+                  'p_cancel_url': cancelUrl,
+                },
+              )
+              as Map<String, dynamic>;
+      return MarketplaceActionResult<ResaleCheckoutSession>(
+        success: true,
+        message: 'Checkout session created.',
+        data: _checkoutSessionFromRow(row),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<ResaleCheckoutSession>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
   }
 
   UniqueItem? _itemByQrToken(String qrToken) {
@@ -467,6 +824,30 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     );
   }
 
+  ResaleCheckoutSession _checkoutSessionFromRow(Map<String, dynamic> row) {
+    return ResaleCheckoutSession(
+      orderId: row['order_id'].toString(),
+      provider: row['provider'].toString(),
+      status: row['status'].toString(),
+      providerReference: row['provider_reference'].toString(),
+      checkoutUrl: row['checkout_url']?.toString(),
+      clientSecret: row['client_secret']?.toString(),
+      expiresAt: row['expires_at'] == null
+          ? null
+          : DateTime.parse(row['expires_at'].toString()),
+    );
+  }
+
+  CollectorNotification _notificationFromRow(Map<String, dynamic> row) {
+    return CollectorNotification(
+      id: row['notification_id'].toString(),
+      title: row['title'].toString(),
+      body: row['body'].toString(),
+      createdAt: DateTime.parse(row['created_at'].toString()),
+      read: row['is_read'] == true,
+    );
+  }
+
   PublicAuthenticityRecord _publicAuthenticityFromRow(
     Map<String, dynamic> row,
   ) {
@@ -483,6 +864,36 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       ownershipVisibility: row['ownership_visibility'].toString(),
       verifiedTransferCount:
           (row['verified_transfer_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  RefundRecord _refundFromRow(Map<String, dynamic> row) {
+    return RefundRecord(
+      refundId: row['refund_id'].toString(),
+      orderId: row['order_id'].toString(),
+      status: row['status'].toString(),
+      amountCents: (row['amount_cents'] as num?)?.toInt() ?? 0,
+      reason: row['reason'].toString(),
+      providerReference: row['provider_reference']?.toString(),
+      createdAt: DateTime.parse(row['created_at'].toString()),
+    );
+  }
+
+  SavedCollectible _savedItemFromRow(Map<String, dynamic> row) {
+    return SavedCollectible(
+      itemId: row['item_id'].toString(),
+      savedAt: DateTime.parse(row['saved_at'].toString()),
+    );
+  }
+
+  ShipmentEvent _shipmentEventFromRow(Map<String, dynamic> row) {
+    return ShipmentEvent(
+      orderId: row['order_id'].toString(),
+      status: row['status'].toString(),
+      occurredAt: DateTime.parse(row['occurred_at'].toString()),
+      carrier: row['carrier']?.toString(),
+      trackingNumber: row['tracking_number']?.toString(),
+      note: row['note']?.toString(),
     );
   }
 
@@ -528,6 +939,9 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     }
     if (message.contains('Authenticity token not found')) {
       return 'No verified collectible matched that QR token.';
+    }
+    if (message.contains('delivery') || message.contains('review window')) {
+      return 'Delivery confirmation is still pending for this order.';
     }
     return message;
   }
