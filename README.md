@@ -26,7 +26,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 1. Install Flutter and Dart 3.10+.
 2. Copy `.env.example` to `.env` and fill in your Supabase values.
 3. Run `dart pub get` from the workspace root or per package/app.
-4. Apply `supabase/migrations/0001_init.sql`, `supabase/migrations/0002_marketplace_hardening.sql`, `supabase/migrations/0003_backend_contract_completion.sql`, `supabase/migrations/0004_customer_read_contract.sql`, `supabase/migrations/0005_qr_claim_contract.sql`, `supabase/migrations/0006_admin_operations_contract.sql`, `supabase/migrations/0007_admin_read_gateways.sql`, `supabase/migrations/0008_fix_admin_role_rls_recursion.sql`, `supabase/migrations/0009_v2_commercial_maturity.sql`, `supabase/migrations/0010_stripe_checkout_reconciliation.sql`, and `supabase/seed/seed.sql` to your Supabase project.
+4. Apply `supabase/migrations/0001_init.sql`, `supabase/migrations/0002_marketplace_hardening.sql`, `supabase/migrations/0003_backend_contract_completion.sql`, `supabase/migrations/0004_customer_read_contract.sql`, `supabase/migrations/0005_qr_claim_contract.sql`, `supabase/migrations/0006_admin_operations_contract.sql`, `supabase/migrations/0007_admin_read_gateways.sql`, `supabase/migrations/0008_fix_admin_role_rls_recursion.sql`, `supabase/migrations/0009_v2_commercial_maturity.sql`, `supabase/migrations/0010_stripe_checkout_reconciliation.sql`, `supabase/migrations/0011_payment_reconciliation_refs.sql`, and `supabase/seed/seed.sql` to your Supabase project.
 5. Create real local-dev users through Supabase Auth, not through SQL inserts into `auth.users`.
 6. After sign-in, call `public.upsert_my_profile(display_name, username, avatar_url)` for each account.
 7. Grant an admin role with `public.admin_set_user_role(user_id, role)` from an existing admin account or dashboard bootstrap step.
@@ -45,6 +45,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 ## Backend contract docs
 - See `docs/backend_contract.md` for the lifecycle, RPCs, views, and local-dev flow.
 - See `docs/payment_configuration.md` for local, staging, and production Stripe setup.
+- See `scripts/stripe/stripe_test_mode_commands.ps1` for a quick Stripe CLI helper.
 
 ## Tradeoffs
 - V1 keeps app-side state management simple with `ChangeNotifier`-style local orchestration to reduce ceremony while the business rules stay centralized in shared domain and backend layers.

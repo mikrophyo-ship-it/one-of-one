@@ -1,16 +1,18 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-import { createStripeClient, json, requireEnv } from '../_shared/stripe.ts';
+import {
+  createStripeClient,
+  getEnv,
+  json,
+  requireEnv,
+} from '../_shared/stripe.ts';
 
 const supabaseUrl = requireEnv('SUPABASE_URL');
 const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY');
 const supabaseServiceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
-const defaultSuccessUrl =
-  Deno.env.get('CUSTOMER_APP_CHECKOUT_SUCCESS_URL')?.trim() ?? '';
-const defaultCancelUrl =
-  Deno.env.get('CUSTOMER_APP_CHECKOUT_CANCEL_URL')?.trim() ?? '';
-const defaultCurrency =
-  Deno.env.get('STRIPE_CHECKOUT_CURRENCY')?.trim().toLowerCase() || 'usd';
+const defaultSuccessUrl = getEnv('CUSTOMER_APP_CHECKOUT_SUCCESS_URL') ?? '';
+const defaultCancelUrl = getEnv('CUSTOMER_APP_CHECKOUT_CANCEL_URL') ?? '';
+const defaultCurrency = (getEnv('STRIPE_CHECKOUT_CURRENCY') ?? 'usd').toLowerCase();
 const stripe = createStripeClient();
 
 Deno.serve(async (request: Request) => {

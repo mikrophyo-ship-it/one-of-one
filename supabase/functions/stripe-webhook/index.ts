@@ -103,13 +103,26 @@ Deno.serve(async (request: Request) => {
       case 'checkout.session.completed':
       case 'checkout.session.async_payment_succeeded': {
         const amount = Number(object['amount_total'] ?? 0);
-        const providerReference =
+        const paymentIntentId =
           typeof object['payment_intent'] === 'string'
             ? object['payment_intent']
+            : null;
+        const providerReference =
+          paymentIntentId != null
+            ? paymentIntentId
             : String(object['id'] ?? '');
         if (orderId == null) {
           throw new Error('Stripe checkout event missing order_id metadata.');
         }
+        await serviceClient.rpc('record_payment_provider_object_refs', {
+          p_order_id: orderId,
+          p_checkout_session_id: String(object['id'] ?? ''),
+          p_payment_intent_id: paymentIntentId,
+          p_latest_charge_id: null,
+          p_webhook_event_id: event.id,
+          p_webhook_event_type: event.type,
+          p_event_created_at: new Date(event.created * 1000).toISOString(),
+        });
         const { data, error } = await serviceClient.rpc(
           'mark_resale_payment_authorized',
           {
@@ -142,6 +155,26 @@ Deno.serve(async (request: Request) => {
           typeof object['payment_intent'] === 'string'
             ? object['payment_intent']
             : String(object['id'] ?? '');
+        await serviceClient.rpc('record_payment_provider_object_refs', {
+          p_order_id: orderId,
+          p_checkout_session_id:
+            event.type.startsWith('checkout.session')
+              ? String(object['id'] ?? '')
+              : null,
+          p_payment_intent_id:
+            event.type == 'payment_intent.payment_failed'
+              ? String(object['id'] ?? '')
+              : typeof object['payment_intent'] === 'string'
+                ? object['payment_intent']
+                : null,
+          p_latest_charge_id:
+            typeof object['latest_charge'] === 'string'
+              ? object['latest_charge']
+              : null,
+          p_webhook_event_id: event.id,
+          p_webhook_event_type: event.type,
+          p_event_created_at: new Date(event.created * 1000).toISOString(),
+        });
         const { error } = await serviceClient.rpc(
           'mark_resale_payment_failed_or_expired',
           {
@@ -162,6 +195,19 @@ Deno.serve(async (request: Request) => {
         if (orderId == null) {
           throw new Error('Unable to resolve order for Stripe refund event.');
         }
+        await serviceClient.rpc('record_payment_provider_object_refs', {
+          p_order_id: orderId,
+          p_checkout_session_id: null,
+          p_payment_intent_id:
+            typeof object['payment_intent'] === 'string'
+              ? object['payment_intent']
+              : null,
+          p_latest_charge_id:
+            typeof object['charge'] === 'string' ? object['charge'] : null,
+          p_webhook_event_id: event.id,
+          p_webhook_event_type: event.type,
+          p_event_created_at: new Date(event.created * 1000).toISOString(),
+        });
         const { data, error } = await serviceClient.rpc(
           'reconcile_order_refund',
           {
