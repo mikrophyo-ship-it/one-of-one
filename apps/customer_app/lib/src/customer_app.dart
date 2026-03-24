@@ -6,6 +6,7 @@ import 'package:domain/domain.dart';
 import 'package:flutter/material.dart';
 import 'package:services/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:utils/utils.dart';
 
 class OneOfOneCustomerApp extends StatelessWidget {
@@ -34,6 +35,7 @@ class _CustomerRootState extends State<CustomerRoot> {
   late final MarketplaceWorkflowService workflowService;
   late final SupabaseAuthService authService;
   late final CustomerController controller;
+  late final CheckoutPresentationConfig checkoutConfig;
 
   @override
   void initState() {
@@ -56,6 +58,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       authService = SupabaseAuthService(configurationError: configurationError);
     }
 
+    checkoutConfig = CheckoutPresentationConfig.fromEnvironment();
     workflowService = MarketplaceWorkflowService(
       repository: repository,
       paymentProvider: const StripePaymentProvider(),
@@ -64,6 +67,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       repository: repository,
       workflowService: workflowService,
       authService: authService,
+      checkoutConfig: checkoutConfig,
     );
     unawaited(controller.initialize());
   }
@@ -190,13 +194,16 @@ class CustomerController extends ChangeNotifier {
     required MarketplaceRepository repository,
     required MarketplaceWorkflowService workflowService,
     required SupabaseAuthService authService,
+    required CheckoutPresentationConfig checkoutConfig,
   }) : _repository = repository,
        _workflowService = workflowService,
-       _authService = authService;
+       _authService = authService,
+       _checkoutConfig = checkoutConfig;
 
   final MarketplaceRepository _repository;
   final MarketplaceWorkflowService _workflowService;
   final SupabaseAuthService _authService;
+  final CheckoutPresentationConfig _checkoutConfig;
 
   StreamSubscription<AuthState>? _authSubscription;
 
@@ -210,6 +217,8 @@ class CustomerController extends ChangeNotifier {
   String? currentDisplayName;
   String? statusMessage;
   String? errorMessage;
+  String? lastCheckoutOrderId;
+  String? lastCheckoutUrl;
   PublicAuthenticityRecord? scannedAuthenticity;
   List<CollectorNotification> notificationFeed = const <CollectorNotification>[];
   Set<String> savedItemIds = <String>{};
@@ -240,6 +249,7 @@ class CustomerController extends ChangeNotifier {
           : 'Collector session restored from Supabase.',
     );
     unawaited(handleInitialAuthenticityLink());
+    unawaited(handleInitialCheckoutReturn());
   }
 
   Artist? artistFor(UniqueItem item) {
@@ -340,6 +350,29 @@ class CustomerController extends ChangeNotifier {
     }
     await lookupPublicAuthenticity(qrToken: qrToken);
     index = 2;
+    notifyListeners();
+  }
+
+  Future<void> handleInitialCheckoutReturn() async {
+    final String? checkoutStatus = Uri.base.queryParameters['checkout_status'];
+    final String? orderId = Uri.base.queryParameters['order_id'];
+    if (checkoutStatus == null || checkoutStatus.trim().isEmpty) {
+      return;
+    }
+
+    lastCheckoutOrderId = orderId?.trim();
+    if (isAuthenticated && currentUserId.isNotEmpty) {
+      await _repository.refresh(userId: currentUserId);
+      await _refreshCompanionData();
+    }
+
+    if (checkoutStatus == 'success') {
+      statusMessage =
+          'Returned from Stripe checkout${lastCheckoutOrderId == null ? '' : ' for order $lastCheckoutOrderId'}. Payment authorization will be confirmed by webhook before shipment and settlement updates.';
+    } else {
+      statusMessage =
+          'Stripe checkout was canceled before payment authorization completed.';
+    }
     notifyListeners();
   }
 
@@ -463,23 +496,51 @@ class CustomerController extends ChangeNotifier {
     if (authMessage != null) {
       return _failAction(authMessage);
     }
+    final UniqueItem? item = itemById(itemId);
+    if (item == null) {
+      return _failAction('Collectible not found.');
+    }
 
-    return _runAction<UniqueItem>(
-      operation: () => _workflowService.buyResaleItem(
-        itemId: itemId,
-        buyerUserId: currentUserId,
-      ),
-      onSuccess: (UniqueItem? item, String message) {
-        if (item != null) {
-          _prependLocalNotification(
-            title: 'Checkout started',
-            body:
-                '${item.serialNumber} payment is authorized. Ownership transfers only after delivery review.',
-          );
-        }
-        return message;
-      },
+    isBusy = true;
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    final MarketplaceActionResult<ResaleCheckoutSession> result =
+        await _workflowService.startResaleCheckout(
+          itemId: itemId,
+          buyerUserId: currentUserId,
+          successUrl: _checkoutConfig.successUrl,
+          cancelUrl: _checkoutConfig.cancelUrl,
+        );
+    isBusy = false;
+
+    if (!result.success || result.data == null) {
+      errorMessage = result.message;
+      notifyListeners();
+      return result.message;
+    }
+
+    final ResaleCheckoutSession session = result.data!;
+    lastCheckoutOrderId = session.orderId;
+    lastCheckoutUrl = session.checkoutUrl;
+
+    bool launched = false;
+    if (session.checkoutUrl != null && session.checkoutUrl!.trim().isNotEmpty) {
+      launched = await launchUrl(Uri.parse(session.checkoutUrl!));
+    }
+
+    _prependLocalNotification(
+      title: 'Checkout started',
+      body:
+          '${item.serialNumber} is in Stripe-hosted checkout. Ownership stays unchanged until webhook authorization and delivery review complete.',
     );
+
+    statusMessage = launched
+        ? 'Hosted Stripe checkout opened for ${item.serialNumber}. Return to the app after payment to await webhook confirmation.'
+        : 'Hosted Stripe checkout is ready${session.checkoutUrl == null ? '.' : ': ${session.checkoutUrl}'}';
+    notifyListeners();
+    return statusMessage!;
   }
 
   Future<String> confirmDelivery({required String orderId}) async {
@@ -712,6 +773,60 @@ class CustomerController extends ChangeNotifier {
   void dispose() {
     _authSubscription?.cancel();
     super.dispose();
+  }
+}
+
+class CheckoutPresentationConfig {
+  const CheckoutPresentationConfig({
+    required this.successUrl,
+    required this.cancelUrl,
+  });
+
+  final String? successUrl;
+  final String? cancelUrl;
+
+  static CheckoutPresentationConfig fromEnvironment() {
+    const String configuredSuccess = String.fromEnvironment(
+      'CHECKOUT_SUCCESS_URL',
+    );
+    const String configuredCancel = String.fromEnvironment('CHECKOUT_CANCEL_URL');
+
+    return CheckoutPresentationConfig(
+      successUrl: _resolveReturnUrl(
+        configured: configuredSuccess,
+        status: 'success',
+      ),
+      cancelUrl: _resolveReturnUrl(
+        configured: configuredCancel,
+        status: 'cancel',
+      ),
+    );
+  }
+
+  static String? _resolveReturnUrl({
+    required String configured,
+    required String status,
+  }) {
+    if (configured.trim().isNotEmpty) {
+      final Uri configuredUri = Uri.parse(configured.trim());
+      return configuredUri.replace(
+        queryParameters: <String, String>{
+          ...configuredUri.queryParameters,
+          'checkout_status': status,
+        },
+      ).toString();
+    }
+
+    if (Uri.base.scheme == 'http' || Uri.base.scheme == 'https') {
+      return Uri.base.replace(
+        queryParameters: <String, String>{
+          ...Uri.base.queryParameters,
+          'checkout_status': status,
+        },
+      ).toString();
+    }
+
+    return null;
   }
 }
 

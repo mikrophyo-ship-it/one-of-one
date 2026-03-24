@@ -713,29 +713,25 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       );
     }
 
-    final Listing? listing = _activeListingForItem(itemId);
-    if (listing == null) {
-      return const MarketplaceActionResult<ResaleCheckoutSession>(
-        success: false,
-        message: 'Active resale listing not found.',
-      );
-    }
-
     try {
-      final Map<String, dynamic> row =
-          await _client!.rpc(
-                'create_resale_checkout_session',
-                params: <String, dynamic>{
-                  'p_listing_id': listing.id,
-                  'p_provider': provider,
-                  'p_success_url': successUrl,
-                  'p_cancel_url': cancelUrl,
-                },
-              )
-              as Map<String, dynamic>;
+      final dynamic response = await _client!.functions.invoke(
+        'stripe-create-checkout-session',
+        body: <String, dynamic>{
+          'item_id': itemId,
+          'success_url': successUrl,
+          'cancel_url': cancelUrl,
+        },
+      );
+      final Map<String, dynamic> row = _edgeResponseMap(response);
+      if (row['error'] != null) {
+        return MarketplaceActionResult<ResaleCheckoutSession>(
+          success: false,
+          message: row['error'].toString(),
+        );
+      }
       return MarketplaceActionResult<ResaleCheckoutSession>(
         success: true,
-        message: 'Checkout session created.',
+        message: 'Hosted Stripe checkout session created.',
         data: _checkoutSessionFromRow(row),
       );
     } on PostgrestException catch (error) {
@@ -743,7 +739,23 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
         success: false,
         message: _friendlyMessage(error),
       );
+    } catch (error) {
+      return MarketplaceActionResult<ResaleCheckoutSession>(
+        success: false,
+        message: error.toString(),
+      );
     }
+  }
+
+  Map<String, dynamic> _edgeResponseMap(dynamic response) {
+    if (response is Map<String, dynamic>) {
+      return response;
+    }
+    final dynamic data = response?.data;
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    return const <String, dynamic>{};
   }
 
   UniqueItem? _itemByQrToken(String qrToken) {

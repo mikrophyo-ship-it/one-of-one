@@ -32,8 +32,14 @@ For ownership and resale lifecycle:
 - `public.create_resale_order(listing_id)`
 - `public.record_resale_payment_and_transfer(order_id, provider, provider_reference, amount_cents)`
 - `public.create_resale_checkout_session(listing_id, provider, success_url, cancel_url)`
+- `public.attach_checkout_provider_session(order_id, provider, provider_reference, provider_session_reference, checkout_session_id, checkout_url, currency, provider_payload)`
 - `public.mark_resale_payment_authorized(order_id, provider, provider_reference, amount_cents)`
+- `public.mark_resale_payment_failed_or_expired(order_id, provider, provider_reference, reason)`
 - `public.confirm_resale_delivery(order_id, release_payouts, note)`
+- `public.try_release_order_payouts(order_id, note)`
+- `public.record_payment_provider_webhook_event(provider, provider_event_id, event_type, payload, api_version, livemode)`
+- `public.mark_payment_provider_webhook_event_state(provider, provider_event_id, processing_state, order_id, payment_id, refund_id, error_message)`
+- `public.reconcile_order_refund(order_id, provider, provider_reference, amount_cents, reason, status, note, provider_payload)`
 - `public.get_my_saved_collectibles()`
 - `public.save_collectible(item_id)`
 - `public.remove_saved_collectible(item_id)`
@@ -79,24 +85,32 @@ This marks the claim code as consumed, records the owner, and creates the open o
 This is allowed only when the user is the recorded current owner and the item is in an eligible state.
 8. Another user calls `create_resale_order(listing_id)`.
 This locks the listing into `sale_pending` and creates the resale order and order_item rows.
-9. Checkout is initialized through `create_resale_checkout_session(...)`, which creates the server order, locks the listing, and returns provider session metadata.
-10. After the provider authorizes payment, the backend calls `mark_resale_payment_authorized(...)`.
+9. The customer app calls the `stripe-create-checkout-session` edge function.
+It uses `create_resale_checkout_session(...)` to create the order and lock the listing, then creates a hosted Stripe Checkout Session and persists the Stripe session ids with `attach_checkout_provider_session(...)`.
+10. Stripe sends signed events to the `stripe-webhook` edge function.
+Every event is first recorded through `record_payment_provider_webhook_event(...)`.
+11. Authorization success events reconcile through `mark_resale_payment_authorized(...)`.
 This records the payment authorization and starts shipment and delivery review gating without finalizing ownership yet.
-11. Shipment progress is recorded through `record_order_shipment_event(...)`.
-12. The buyer or admin confirms receipt through `confirm_resale_delivery(...)`.
-This is the point where ownership finalizes on-platform and payout, royalty, and platform fee ledgers become releasable.
-13. Refund and partial refund operations are recorded through `issue_order_refund(...)`.
-14. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing and transfer.
-15. Admin can moderate listings through `admin_moderate_listing(...)`, resolve or reject disputes through `admin_update_dispute_status(...)`, force item restrictions like `stolen_flagged`, `frozen`, or safe release states through `admin_flag_item_status(...)`, and maintain artist/artwork/inventory records through the admin upsert RPCs.
-16. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
+12. Failure or expiry events reconcile through `mark_resale_payment_failed_or_expired(...)`.
+This safely reopens the listing only if the order has not already been finalized.
+13. Shipment progress is recorded through `record_order_shipment_event(...)`.
+14. The buyer or admin confirms receipt through `confirm_resale_delivery(...)`.
+This is the point where ownership finalizes on-platform.
+15. Payout release is guarded by `try_release_order_payouts(...)`, which requires delivery confirmation, delivered shipment evidence, no open dispute, and no refund activity.
+16. Refund and partial refund events reconcile through `reconcile_order_refund(...)` and admin-initiated refund requests still enter through `issue_order_refund(...)`.
+Repeated or delayed provider events update the same refund/payment records idempotently.
+17. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing and transfer.
+18. Admin can moderate listings through `admin_moderate_listing(...)`, resolve or reject disputes through `admin_update_dispute_status(...)`, force item restrictions like `stolen_flagged`, `frozen`, or safe release states through `admin_flag_item_status(...)`, and maintain artist/artwork/inventory records through the admin upsert RPCs.
+19. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
 
 ## Local development flow
-1. Apply migrations (including `0008_fix_admin_role_rls_recursion.sql`) and `supabase/seed/seed.sql`.
+1. Apply migrations through `0010_stripe_checkout_reconciliation.sql` and `supabase/seed/seed.sql`.
 2. Create local users through Supabase Auth UI or app sign-up.
 3. Sign in as each user and call `upsert_my_profile(...)`.
 4. Promote one account to admin through a bootstrap admin path, then use `admin_set_user_role(...)` for later role changes.
 5. Use the seeded `sold_unclaimed` items and their packaged hidden codes for claim testing.
-6. Drive authenticity lookup, claim, listing, checkout, payment authorization, shipment, delivery confirmation, refund, dispute, moderation, and settings flows through RPCs and views rather than direct table writes.
+6. Deploy `stripe-create-checkout-session` and `stripe-webhook` with environment-specific Stripe secrets and return URLs.
+7. Drive authenticity lookup, claim, listing, checkout, payment authorization, shipment, delivery confirmation, refund, dispute, moderation, and settings flows through RPCs, edge functions, and views rather than direct table writes.
 
 ## Seed notes
 `supabase/seed/seed.sql` seeds collectible catalog and authenticity data only. It intentionally does not insert into `auth.users`.
@@ -104,9 +118,9 @@ This is the point where ownership finalizes on-platform and payout, royalty, and
 ## Current app integration
 - The customer app now uses real Supabase Auth session state plus Supabase-backed reads and RPCs through its repository and service architecture.
 - It resolves QR and public authenticity through `get_public_authenticity_by_qr_token(...)` and keeps claim codes out of public authenticity views.
+- It starts hosted Stripe checkout through the Supabase edge function rather than pretending client-side authorization completed locally.
 - The admin app now uses Supabase-backed operational reads plus admin RPCs for disputes, listing moderation, customer roles, audit viewing, freeze controls, and persisted settings.
 
 ## Remaining app integration work
-- Connect provider-hosted checkout presentation and webhook reconciliation for live Stripe production credentials.
 - Add camera-based QR scanning package wiring for device hardware capture and printable QR export polish.
 - Add deployed password-reset redirect URLs and production mobile deep-link handling refinements.
