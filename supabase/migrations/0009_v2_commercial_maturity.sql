@@ -707,12 +707,12 @@ end;
 $$;
 
 create or replace function public.admin_upsert_artist(
-  p_artist_id uuid default null,
   p_display_name text,
   p_slug text,
   p_royalty_bps int,
   p_authenticity_statement text,
-  p_is_active boolean default true
+  p_is_active boolean default true,
+  p_artist_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -763,12 +763,12 @@ end;
 $$;
 
 create or replace function public.admin_upsert_artwork(
-  p_artwork_id uuid default null,
   p_artist_id uuid,
   p_title text,
   p_story text,
   p_provenance_proof text[] default '{}',
-  p_creation_date timestamptz default null
+  p_creation_date timestamptz default null,
+  p_artwork_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -819,12 +819,12 @@ end;
 $$;
 
 create or replace function public.admin_upsert_inventory_item(
-  p_item_id uuid default null,
   p_artist_id uuid,
   p_artwork_id uuid,
   p_garment_product_id uuid,
   p_serial_number text,
-  p_item_state public.item_state
+  p_item_state public.item_state,
+  p_item_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -986,6 +986,6 @@ grant execute on function public.get_admin_artist_directory() to authenticated;
 grant execute on function public.get_admin_artwork_directory() to authenticated;
 grant execute on function public.get_admin_inventory_directory() to authenticated;
 grant execute on function public.get_admin_finance_report() to authenticated;
-grant execute on function public.admin_upsert_artist(uuid, text, text, int, text, boolean) to authenticated;
-grant execute on function public.admin_upsert_artwork(uuid, uuid, text, text, text[], timestamptz) to authenticated;
-grant execute on function public.admin_upsert_inventory_item(uuid, uuid, uuid, uuid, text, public.item_state) to authenticated;
+grant execute on function public.admin_upsert_artist(text, text, int, text, boolean, uuid) to authenticated;
+grant execute on function public.admin_upsert_artwork(uuid, text, text, text[], timestamptz, uuid) to authenticated;
+grant execute on function public.admin_upsert_inventory_item(uuid, uuid, uuid, text, public.item_state, uuid) to authenticated;
