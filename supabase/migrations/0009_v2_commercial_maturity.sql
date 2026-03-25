@@ -556,6 +556,11 @@ begin
 end;
 $$;
 
+drop function if exists public.get_admin_dashboard_overview();
+drop function if exists public.get_admin_order_queue();
+drop view if exists public.admin_dashboard_overview;
+drop view if exists public.admin_order_queue;
+
 create or replace view public.admin_artist_directory
 with (security_invoker = true) as
 select
@@ -973,6 +978,41 @@ left join public.listings l on l.id = o.listing_id
 left join public.user_profiles buyer on buyer.user_id = o.buyer_user_id
 left join public.user_profiles seller on seller.user_id = o.seller_user_id;
 
+create or replace function public.get_admin_dashboard_overview()
+returns setof public.admin_dashboard_overview
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin_user() then
+    raise exception 'Admin access required';
+  end if;
+
+  return query
+  select *
+  from public.admin_dashboard_overview;
+end;
+$$;
+
+create or replace function public.get_admin_order_queue()
+returns setof public.admin_order_queue
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin_user() then
+    raise exception 'Admin access required';
+  end if;
+
+  return query
+  select *
+  from public.admin_order_queue
+  order by created_at desc;
+end;
+$$;
+
 grant execute on function public.get_my_saved_collectibles() to authenticated;
 grant execute on function public.save_collectible(uuid) to authenticated;
 grant execute on function public.remove_saved_collectible(uuid) to authenticated;
@@ -982,6 +1022,8 @@ grant execute on function public.mark_resale_payment_authorized(uuid, text, text
 grant execute on function public.confirm_resale_delivery(uuid, boolean, text) to authenticated;
 grant execute on function public.record_order_shipment_event(uuid, text, text, text, text) to authenticated;
 grant execute on function public.issue_order_refund(uuid, int, text, text) to authenticated;
+grant execute on function public.get_admin_dashboard_overview() to authenticated;
+grant execute on function public.get_admin_order_queue() to authenticated;
 grant execute on function public.get_admin_artist_directory() to authenticated;
 grant execute on function public.get_admin_artwork_directory() to authenticated;
 grant execute on function public.get_admin_inventory_directory() to authenticated;
