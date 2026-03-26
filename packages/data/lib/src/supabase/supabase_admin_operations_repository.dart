@@ -56,6 +56,9 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
           (await _client!.rpc('get_admin_artwork_directory')) as List<dynamic>;
       final List<dynamic> inventoryRows =
           (await _client!.rpc('get_admin_inventory_directory')) as List<dynamic>;
+      final List<dynamic> garmentProductRows =
+          (await _client!.rpc('get_admin_garment_product_directory'))
+              as List<dynamic>;
       final List<dynamic> financeRows =
           (await _client!.rpc('get_admin_finance_report')) as List<dynamic>;
       final List<dynamic> auditRows =
@@ -94,6 +97,12 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
             .toList(),
         inventory: inventoryRows
             .map((dynamic row) => _inventoryFromRow(row as Map<String, dynamic>))
+            .toList(),
+        garmentProducts: garmentProductRows
+            .map(
+              (dynamic row) =>
+                  _garmentProductFromRow(row as Map<String, dynamic>),
+            )
             .toList(),
         finance: financeRows
             .map((dynamic row) => _financeFromRow(row as Map<String, dynamic>))
@@ -609,6 +618,18 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     );
   }
 
+  AdminGarmentProductRecord _garmentProductFromRow(Map<String, dynamic> row) {
+    return AdminGarmentProductRecord(
+      garmentProductId: row['garment_product_id'].toString(),
+      sku: row['sku'].toString(),
+      name: row['name'].toString(),
+      silhouette: _nullableString(row['silhouette']),
+      sizeLabel: _nullableString(row['size_label']),
+      colorway: _nullableString(row['colorway']),
+      basePriceCents: _toInt(row['base_price_cents']),
+    );
+  }
+
   AdminFinanceRecord _financeFromRow(Map<String, dynamic> row) {
     return AdminFinanceRecord(
       orderId: row['order_id'].toString(),
@@ -714,6 +735,9 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
   String _friendlyMessage(String message) {
     if (message.contains('Admin access required')) {
       return 'Sign in with an admin-approved account to continue.';
+    }
+    if (message.contains('invalid input syntax for type uuid')) {
+      return 'One of the admin form ids is not a valid UUID. For inventory creation, garment product id must be the UUID from public.garment_products.id.';
     }
     if (message.contains('permission denied') || message.contains('JWT')) {
       return 'This admin console needs a real authenticated session.';

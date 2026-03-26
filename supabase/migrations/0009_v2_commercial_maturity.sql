@@ -694,6 +694,35 @@ begin
 end;
 $$;
 
+create or replace view public.admin_garment_product_directory
+with (security_invoker = true) as
+select
+  gp.id as garment_product_id,
+  gp.sku,
+  gp.name,
+  gp.silhouette,
+  gp.size_label,
+  gp.colorway,
+  gp.base_price_cents
+from public.garment_products gp;
+
+create or replace function public.get_admin_garment_product_directory()
+returns setof public.admin_garment_product_directory
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin_user() then
+    raise exception 'Admin access required';
+  end if;
+
+  return query
+  select * from public.admin_garment_product_directory
+  order by name asc, sku asc;
+end;
+$$;
+
 create or replace function public.get_admin_finance_report()
 returns setof public.admin_finance_report
 language plpgsql
@@ -1030,6 +1059,7 @@ grant execute on function public.get_admin_order_queue() to authenticated;
 grant execute on function public.get_admin_artist_directory() to authenticated;
 grant execute on function public.get_admin_artwork_directory() to authenticated;
 grant execute on function public.get_admin_inventory_directory() to authenticated;
+grant execute on function public.get_admin_garment_product_directory() to authenticated;
 grant execute on function public.get_admin_finance_report() to authenticated;
 grant execute on function public.admin_upsert_artist(text, text, int, text, boolean, uuid) to authenticated;
 grant execute on function public.admin_upsert_artwork(uuid, text, text, text[], timestamptz, uuid) to authenticated;

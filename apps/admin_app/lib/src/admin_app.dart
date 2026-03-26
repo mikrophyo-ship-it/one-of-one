@@ -181,6 +181,8 @@ class _AdminShellState extends State<AdminShell> {
         artists: _snapshot?.artists ?? const <AdminArtistRecord>[],
         artworks: _snapshot?.artworks ?? const <AdminArtworkRecord>[],
         inventory: _snapshot?.inventory ?? const <AdminInventoryRecord>[],
+        garmentProducts:
+            _snapshot?.garmentProducts ?? const <AdminGarmentProductRecord>[],
         onCreateArtist: _createArtist,
         onCreateArtwork: _createArtwork,
         onCreateInventory: _createInventory,
@@ -499,6 +501,7 @@ class _AdminShellState extends State<AdminShell> {
       context,
       _snapshot?.artists ?? const <AdminArtistRecord>[],
       _snapshot?.artworks ?? const <AdminArtworkRecord>[],
+      _snapshot?.garmentProducts ?? const <AdminGarmentProductRecord>[],
     );
     if (input == null) {
       return;
@@ -941,15 +944,16 @@ Future<_CatalogInventoryInput?> promptForInventory(
   BuildContext context,
   List<AdminArtistRecord> artists,
   List<AdminArtworkRecord> artworks,
+  List<AdminGarmentProductRecord> garmentProducts,
 ) async {
-  if (artists.isEmpty || artworks.isEmpty) {
+  if (artists.isEmpty || artworks.isEmpty || garmentProducts.isEmpty) {
     return null;
   }
 
-  final TextEditingController garmentProductId = TextEditingController();
   final TextEditingController serialNumber = TextEditingController();
   String artistId = artists.first.artistId;
   String artworkId = artworks.first.artworkId;
+  String garmentProductId = garmentProducts.first.garmentProductId;
   String itemState = 'minted';
 
   final _CatalogInventoryInput? value = await showDialog<_CatalogInventoryInput>(
@@ -1006,11 +1010,30 @@ Future<_CatalogInventoryInput?> promptForInventory(
                     },
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: garmentProductId,
+                  DropdownButtonFormField<String>(
+                    initialValue: garmentProductId,
                     decoration: const InputDecoration(
-                      labelText: 'Garment product id',
+                      labelText: 'Garment product',
                     ),
+                    items: garmentProducts
+                        .map(
+                          (
+                            AdminGarmentProductRecord garmentProduct,
+                          ) => DropdownMenuItem<String>(
+                            value: garmentProduct.garmentProductId,
+                            child: Text(
+                              '${garmentProduct.name} (${garmentProduct.sku})',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          garmentProductId = value;
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1054,7 +1077,7 @@ Future<_CatalogInventoryInput?> promptForInventory(
                   _CatalogInventoryInput(
                     artistId: artistId,
                     artworkId: artworkId,
-                    garmentProductId: garmentProductId.text.trim(),
+                    garmentProductId: garmentProductId,
                     serialNumber: serialNumber.text.trim(),
                     itemState: itemState,
                   ),
@@ -1067,7 +1090,6 @@ Future<_CatalogInventoryInput?> promptForInventory(
       );
     },
   );
-  garmentProductId.dispose();
   serialNumber.dispose();
   return value;
 }

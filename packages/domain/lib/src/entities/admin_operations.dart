@@ -232,6 +232,26 @@ class AdminInventoryRecord {
   final String ownerDisplayLabel;
 }
 
+class AdminGarmentProductRecord {
+  const AdminGarmentProductRecord({
+    required this.garmentProductId,
+    required this.sku,
+    required this.name,
+    required this.silhouette,
+    required this.sizeLabel,
+    required this.colorway,
+    required this.basePriceCents,
+  });
+
+  final String garmentProductId;
+  final String sku;
+  final String name;
+  final String? silhouette;
+  final String? sizeLabel;
+  final String? colorway;
+  final int basePriceCents;
+}
+
 class AdminFinanceRecord {
   const AdminFinanceRecord({
     required this.orderId,
@@ -298,6 +318,7 @@ class AdminOperationsSnapshot {
     required this.artists,
     required this.artworks,
     required this.inventory,
+    required this.garmentProducts,
     required this.finance,
     required this.audits,
     required this.settings,
@@ -311,6 +332,7 @@ class AdminOperationsSnapshot {
   final List<AdminArtistRecord> artists;
   final List<AdminArtworkRecord> artworks;
   final List<AdminInventoryRecord> inventory;
+  final List<AdminGarmentProductRecord> garmentProducts;
   final List<AdminFinanceRecord> finance;
   final List<AdminAuditRecord> audits;
   final PlatformSettingsSnapshot settings;

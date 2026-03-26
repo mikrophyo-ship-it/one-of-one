@@ -1,5 +1,6 @@
 import 'package:domain/domain.dart';
 import 'package:flutter/material.dart';
+import 'package:utils/utils.dart';
 
 import '../../widgets/admin_shared.dart';
 
@@ -8,6 +9,7 @@ class CatalogPanel extends StatelessWidget {
     required this.artists,
     required this.artworks,
     required this.inventory,
+    required this.garmentProducts,
     required this.onCreateArtist,
     required this.onCreateArtwork,
     required this.onCreateInventory,
@@ -17,6 +19,7 @@ class CatalogPanel extends StatelessWidget {
   final List<AdminArtistRecord> artists;
   final List<AdminArtworkRecord> artworks;
   final List<AdminInventoryRecord> inventory;
+  final List<AdminGarmentProductRecord> garmentProducts;
   final VoidCallback onCreateArtist;
   final VoidCallback onCreateArtwork;
   final VoidCallback onCreateInventory;
@@ -116,6 +119,37 @@ class CatalogPanel extends StatelessWidget {
                             ),
                           ),
                           DataCell(Text('${artwork.inventoryCount}')),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
+        ),
+        const SizedBox(height: 16),
+        SectionCard(
+          title: 'Garment products',
+          child: garmentProducts.isEmpty
+              ? const EmptyState(message: 'No garment products available.')
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columns: const <DataColumn>[
+                      DataColumn(label: Text('Name')),
+                      DataColumn(label: Text('SKU')),
+                      DataColumn(label: Text('Silhouette')),
+                      DataColumn(label: Text('Size')),
+                      DataColumn(label: Text('Colorway')),
+                      DataColumn(label: Text('Base price')),
+                    ],
+                    rows: garmentProducts.map((AdminGarmentProductRecord item) {
+                      return DataRow(
+                        cells: <DataCell>[
+                          DataCell(Text(item.name)),
+                          DataCell(Text(item.sku)),
+                          DataCell(Text(item.silhouette ?? 'n/a')),
+                          DataCell(Text(item.sizeLabel ?? 'n/a')),
+                          DataCell(Text(item.colorway ?? 'n/a')),
+                          DataCell(Text(formatCurrency(item.basePriceCents))),
                         ],
                       );
                     }).toList(),
