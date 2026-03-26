@@ -870,10 +870,18 @@ set search_path = public
 as $$
 declare
   v_item_id uuid;
+  v_public_qr_token text;
+  v_hidden_claim_code_hash text;
 begin
   if not public.is_admin_user() then
     raise exception 'Admin access required';
   end if;
+
+  v_public_qr_token := 'qr_' || replace(gen_random_uuid()::text, '-', '');
+  v_hidden_claim_code_hash := encode(
+    digest(gen_random_uuid()::text, 'sha256'),
+    'hex'
+  );
 
   if p_item_id is null then
     insert into public.unique_items (
@@ -881,12 +889,16 @@ begin
       artwork_id,
       artist_id,
       garment_product_id,
+      public_qr_token,
+      hidden_claim_code_hash,
       state
     ) values (
       p_serial_number,
       p_artwork_id,
       p_artist_id,
       p_garment_product_id,
+      v_public_qr_token,
+      v_hidden_claim_code_hash,
       p_item_state
     ) returning id into v_item_id;
   else
