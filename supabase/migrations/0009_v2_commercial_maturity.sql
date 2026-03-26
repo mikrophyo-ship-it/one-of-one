@@ -791,12 +791,14 @@ begin
     insert into public.artworks (
       artist_id,
       title,
+      concept_note,
       story,
       provenance_proof,
       creation_date
     ) values (
       p_artist_id,
       p_title,
+      p_story,
       p_story,
       to_jsonb(p_provenance_proof),
       p_creation_date::date
@@ -805,6 +807,7 @@ begin
     update public.artworks
     set artist_id = p_artist_id,
         title = p_title,
+        concept_note = p_story,
         story = p_story,
         provenance_proof = to_jsonb(p_provenance_proof),
         creation_date = p_creation_date::date
