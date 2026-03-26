@@ -10,7 +10,18 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:utils/utils.dart';
 
 class OneOfOneCustomerApp extends StatelessWidget {
-  const OneOfOneCustomerApp({super.key});
+  const OneOfOneCustomerApp({
+    super.key,
+    this.repository,
+    this.workflowService,
+    this.authService,
+    this.checkoutConfig,
+  });
+
+  final MarketplaceRepository? repository;
+  final MarketplaceWorkflowService? workflowService;
+  final SupabaseAuthService? authService;
+  final CheckoutPresentationConfig? checkoutConfig;
 
   @override
   Widget build(BuildContext context) {
@@ -18,13 +29,29 @@ class OneOfOneCustomerApp extends StatelessWidget {
       title: 'One of One',
       debugShowCheckedModeBanner: false,
       theme: OneOfOneTheme.customerTheme(),
-      home: const CustomerRoot(),
+      home: CustomerRoot(
+        repository: repository,
+        workflowService: workflowService,
+        authService: authService,
+        checkoutConfig: checkoutConfig,
+      ),
     );
   }
 }
 
 class CustomerRoot extends StatefulWidget {
-  const CustomerRoot({super.key});
+  const CustomerRoot({
+    super.key,
+    this.repository,
+    this.workflowService,
+    this.authService,
+    this.checkoutConfig,
+  });
+
+  final MarketplaceRepository? repository;
+  final MarketplaceWorkflowService? workflowService;
+  final SupabaseAuthService? authService;
+  final CheckoutPresentationConfig? checkoutConfig;
 
   @override
   State<CustomerRoot> createState() => _CustomerRootState();
@@ -40,29 +67,16 @@ class _CustomerRootState extends State<CustomerRoot> {
   @override
   void initState() {
     super.initState();
-    const String url = String.fromEnvironment('SUPABASE_URL');
-    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-    final String? configurationError = url.isEmpty || anonKey.isEmpty
-        ? 'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.'
-        : null;
-
-    if (configurationError == null) {
-      repository = SupabaseMarketplaceRepository(
-        client: Supabase.instance.client,
-      );
-      authService = SupabaseAuthService(client: Supabase.instance.client);
-    } else {
-      repository = SupabaseMarketplaceRepository(
-        configurationError: configurationError,
-      );
-      authService = SupabaseAuthService(configurationError: configurationError);
-    }
-
-    checkoutConfig = CheckoutPresentationConfig.fromEnvironment();
-    workflowService = MarketplaceWorkflowService(
-      repository: repository,
-      paymentProvider: const StripePaymentProvider(),
-    );
+    repository = widget.repository ?? _defaultRepository();
+    authService = widget.authService ?? _defaultAuthService();
+    checkoutConfig =
+        widget.checkoutConfig ?? CheckoutPresentationConfig.fromEnvironment();
+    workflowService =
+        widget.workflowService ??
+        MarketplaceWorkflowService(
+          repository: repository,
+          paymentProvider: const StripePaymentProvider(),
+        );
     controller = CustomerController(
       repository: repository,
       workflowService: workflowService,
@@ -70,6 +84,32 @@ class _CustomerRootState extends State<CustomerRoot> {
       checkoutConfig: checkoutConfig,
     );
     unawaited(controller.initialize());
+  }
+
+  MarketplaceRepository _defaultRepository() {
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    final String? configurationError = url.isEmpty || anonKey.isEmpty
+        ? 'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.'
+        : null;
+
+    if (configurationError == null) {
+      return SupabaseMarketplaceRepository(client: Supabase.instance.client);
+    }
+    return SupabaseMarketplaceRepository(configurationError: configurationError);
+  }
+
+  SupabaseAuthService _defaultAuthService() {
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    final String? configurationError = url.isEmpty || anonKey.isEmpty
+        ? 'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.'
+        : null;
+
+    if (configurationError == null) {
+      return SupabaseAuthService(client: Supabase.instance.client);
+    }
+    return SupabaseAuthService(configurationError: configurationError);
   }
 
   @override
