@@ -497,11 +497,33 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   Future<void> _createInventory() async {
+    final List<AdminArtistRecord> artists =
+        _snapshot?.artists ?? const <AdminArtistRecord>[];
+    final List<AdminArtworkRecord> artworks =
+        _snapshot?.artworks ?? const <AdminArtworkRecord>[];
+    final List<AdminGarmentProductRecord> garmentProducts =
+        _snapshot?.garmentProducts ?? const <AdminGarmentProductRecord>[];
+
+    final List<String> missingRequirements = <String>[
+      if (artists.isEmpty) 'at least one artist',
+      if (artworks.isEmpty) 'at least one artwork',
+      if (garmentProducts.isEmpty) 'at least one garment product',
+    ];
+    if (missingRequirements.isNotEmpty) {
+      setState(() {
+        _bannerMessage =
+            'Inventory creation needs ${missingRequirements.join(', ')}. '
+            'Refresh the admin console and make sure migrations and seed data are applied.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
     final _CatalogInventoryInput? input = await promptForInventory(
       context,
-      _snapshot?.artists ?? const <AdminArtistRecord>[],
-      _snapshot?.artworks ?? const <AdminArtworkRecord>[],
-      _snapshot?.garmentProducts ?? const <AdminGarmentProductRecord>[],
+      artists,
+      artworks,
+      garmentProducts,
     );
     if (input == null) {
       return;
