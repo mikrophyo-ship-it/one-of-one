@@ -26,7 +26,7 @@ begin
 
   v_public_qr_token := 'qr_' || replace(gen_random_uuid()::text, '-', '');
   v_hidden_claim_code_hash := encode(
-    digest(gen_random_uuid()::text, 'sha256'),
+    extensions.digest(gen_random_uuid()::text, 'sha256'),
     'hex'
   );
 
