@@ -9,4 +9,5 @@ coverage/
 *.iml
 .DS_Store
 **/.flutter-plugins-dependencies
+devtools_options.yaml.dart-appdata/
 devtools_options.yaml
