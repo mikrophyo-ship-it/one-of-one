@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:customer_app/src/authenticity_link_source.dart';
 import 'package:customer_app/src/customer_app.dart';
 import 'package:data/data.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ void main() {
             successUrl: 'https://example.test/success',
             cancelUrl: 'https://example.test/cancel',
           ),
+          enableCameraScanner: false,
         ),
       );
       await tester.pumpAndSettle();
@@ -81,7 +83,9 @@ void main() {
       expect(find.text('Authenticity verified'), findsOneWidget);
       expect(find.text('OOO-EM-0002'), findsWidgets);
       expect(find.textContaining('Verified resale history:'), findsOneWidget);
-      await tester.pageBack();
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Continue to scan and claim'),
+      );
       await tester.pumpAndSettle();
 
       await _scrollUntilVisible(tester, find.text('Claim ownership'));
@@ -166,6 +170,7 @@ void main() {
           paymentProvider: const MockPaymentProvider(),
         ),
         authService: authService,
+        enableCameraScanner: false,
       ),
     );
     await tester.pumpAndSettle();
@@ -204,9 +209,10 @@ void main() {
             repository: repository,
             paymentProvider: const MockPaymentProvider(),
           ),
-          authService: authService,
-        ),
-      );
+        authService: authService,
+        enableCameraScanner: false,
+      ),
+    );
       await tester.pumpAndSettle();
 
       expect(find.text('Collect the original.'), findsNothing);
@@ -215,6 +221,43 @@ void main() {
 
       await _tapNav(tester, 'Profile');
       expect(find.text('existing@example.com'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'customer app opens the public authenticity route from a deep link before sign in',
+    (WidgetTester tester) async {
+      final DemoCatalog repository = DemoCatalog();
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const MockPaymentProvider(),
+          ),
+          authService: _TestAuthService(),
+          authenticityLinkSource: FakeAuthenticityLinkSource(
+            initialUri: Uri.parse(
+              'https://oneofone.test/authenticity?qr=qr_afterglow_01',
+            ),
+          ),
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Authenticity verified'), findsOneWidget);
+      expect(find.text('OOO-AG-0001'), findsWidgets);
+      expect(find.text('Collect the original.'), findsNothing);
+      expect(find.text('Back to collector sign in'), findsOneWidget);
+
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Back to collector sign in'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Collect the original.'), findsOneWidget);
     },
   );
 }

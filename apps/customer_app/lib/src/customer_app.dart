@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:core_ui/core_ui.dart';
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:services/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:utils/utils.dart';
+
+import 'authenticity_link_source.dart';
 
 class OneOfOneCustomerApp extends StatelessWidget {
   const OneOfOneCustomerApp({
@@ -16,12 +20,16 @@ class OneOfOneCustomerApp extends StatelessWidget {
     this.workflowService,
     this.authService,
     this.checkoutConfig,
+    this.authenticityLinkSource,
+    this.enableCameraScanner = true,
   });
 
   final MarketplaceRepository? repository;
   final MarketplaceWorkflowService? workflowService;
   final SupabaseAuthService? authService;
   final CheckoutPresentationConfig? checkoutConfig;
+  final AuthenticityLinkSource? authenticityLinkSource;
+  final bool enableCameraScanner;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +42,8 @@ class OneOfOneCustomerApp extends StatelessWidget {
         workflowService: workflowService,
         authService: authService,
         checkoutConfig: checkoutConfig,
+        authenticityLinkSource: authenticityLinkSource,
+        enableCameraScanner: enableCameraScanner,
       ),
     );
   }
@@ -46,12 +56,16 @@ class CustomerRoot extends StatefulWidget {
     this.workflowService,
     this.authService,
     this.checkoutConfig,
+    this.authenticityLinkSource,
+    this.enableCameraScanner = true,
   });
 
   final MarketplaceRepository? repository;
   final MarketplaceWorkflowService? workflowService;
   final SupabaseAuthService? authService;
   final CheckoutPresentationConfig? checkoutConfig;
+  final AuthenticityLinkSource? authenticityLinkSource;
+  final bool enableCameraScanner;
 
   @override
   State<CustomerRoot> createState() => _CustomerRootState();
@@ -63,6 +77,7 @@ class _CustomerRootState extends State<CustomerRoot> {
   late final SupabaseAuthService authService;
   late final CustomerController controller;
   late final CheckoutPresentationConfig checkoutConfig;
+  late final AuthenticityLinkSource authenticityLinkSource;
 
   @override
   void initState() {
@@ -71,6 +86,9 @@ class _CustomerRootState extends State<CustomerRoot> {
     authService = widget.authService ?? _defaultAuthService();
     checkoutConfig =
         widget.checkoutConfig ?? CheckoutPresentationConfig.fromEnvironment();
+    authenticityLinkSource =
+        widget.authenticityLinkSource ??
+        AppAuthenticityLinkSource();
     workflowService =
         widget.workflowService ??
         MarketplaceWorkflowService(
@@ -82,6 +100,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       workflowService: workflowService,
       authService: authService,
       checkoutConfig: checkoutConfig,
+      authenticityLinkSource: authenticityLinkSource,
     );
     unawaited(controller.initialize());
   }
@@ -126,6 +145,9 @@ class _CustomerRootState extends State<CustomerRoot> {
         if (controller.isInitializing) {
           return const _StartupScreen();
         }
+        if (controller.publicAuthenticityRoute != null) {
+          return PublicAuthenticityScaffold(controller: controller);
+        }
         if (!controller.isAuthenticated) {
           return AuthScreen(controller: controller);
         }
@@ -153,7 +175,10 @@ class _CustomerRootState extends State<CustomerRoot> {
                 children: <Widget>[
                   HomeScreen(controller: controller),
                   ExploreScreen(controller: controller),
-                  ScanScreen(controller: controller),
+                  ScanScreen(
+                    controller: controller,
+                    enableCameraScanner: widget.enableCameraScanner,
+                  ),
                   VaultScreen(controller: controller),
                   ProfileScreen(controller: controller),
                 ],
@@ -235,17 +260,21 @@ class CustomerController extends ChangeNotifier {
     required MarketplaceWorkflowService workflowService,
     required SupabaseAuthService authService,
     required CheckoutPresentationConfig checkoutConfig,
+    required AuthenticityLinkSource authenticityLinkSource,
   }) : _repository = repository,
-       _workflowService = workflowService,
-       _authService = authService,
-       _checkoutConfig = checkoutConfig;
+        _workflowService = workflowService,
+        _authService = authService,
+        _checkoutConfig = checkoutConfig,
+        _authenticityLinkSource = authenticityLinkSource;
 
   final MarketplaceRepository _repository;
   final MarketplaceWorkflowService _workflowService;
   final SupabaseAuthService _authService;
   final CheckoutPresentationConfig _checkoutConfig;
+  final AuthenticityLinkSource _authenticityLinkSource;
 
   StreamSubscription<AuthState>? _authSubscription;
+  StreamSubscription<Uri>? _authenticityLinkSubscription;
 
   bool isInitializing = true;
   bool isAuthenticated = false;
@@ -260,8 +289,10 @@ class CustomerController extends ChangeNotifier {
   String? lastCheckoutOrderId;
   String? lastCheckoutUrl;
   PublicAuthenticityRecord? scannedAuthenticity;
+  PublicAuthenticityRecord? publicAuthenticityRoute;
   List<CollectorNotification> notificationFeed = const <CollectorNotification>[];
   Set<String> savedItemIds = <String>{};
+  String? _lastResolvedAuthenticityToken;
 
   bool get authConfigured => _authService.isConfigured;
 
@@ -282,6 +313,11 @@ class CustomerController extends ChangeNotifier {
   Future<void> initialize() async {
     _authSubscription ??= _authService.authStateChanges().listen((AuthState _) {
       unawaited(_syncSessionState());
+    });
+    _authenticityLinkSubscription ??= _authenticityLinkSource.uriStream.listen((
+      Uri uri,
+    ) {
+      unawaited(handleAuthenticityUri(uri));
     });
     await _syncSessionState(
       restoredMessage: _authService.currentSession == null
@@ -384,13 +420,36 @@ class CustomerController extends ChangeNotifier {
   }
 
   Future<void> handleInitialAuthenticityLink() async {
-    final String? qrToken = Uri.base.queryParameters['qr'];
-    if (qrToken == null || qrToken.trim().isEmpty) {
+    final AuthenticityRouteMatch? baseMatch = AuthenticityRouteParser.parseUri(
+      Uri.base,
+    );
+    if (baseMatch != null) {
+      await resolveAuthenticityInput(
+        rawInput: baseMatch.rawInput,
+        openPublicRoute: true,
+        switchToScanTab: isAuthenticated,
+      );
       return;
     }
-    await lookupPublicAuthenticity(qrToken: qrToken);
-    index = 2;
-    notifyListeners();
+
+    final Uri? initialUri = await _authenticityLinkSource.getInitialUri();
+    if (initialUri == null) {
+      return;
+    }
+    await handleAuthenticityUri(initialUri);
+  }
+
+  Future<void> handleAuthenticityUri(Uri uri) async {
+    final AuthenticityRouteMatch? match = AuthenticityRouteParser.parseUri(uri);
+    if (match == null) {
+      return;
+    }
+
+    await resolveAuthenticityInput(
+      rawInput: match.rawInput,
+      openPublicRoute: true,
+      switchToScanTab: isAuthenticated,
+    );
   }
 
   Future<void> handleInitialCheckoutReturn() async {
@@ -428,6 +487,8 @@ class CustomerController extends ChangeNotifier {
 
   Future<PublicAuthenticityRecord?> lookupPublicAuthenticity({
     required String qrToken,
+    bool openPublicRoute = false,
+    bool switchToScanTab = false,
   }) async {
     isBusy = true;
     errorMessage = null;
@@ -439,15 +500,73 @@ class CustomerController extends ChangeNotifier {
     isBusy = false;
     if (result.success && result.data != null) {
       scannedAuthenticity = result.data;
+      if (openPublicRoute) {
+        publicAuthenticityRoute = result.data;
+      }
+      if (switchToScanTab) {
+        index = 2;
+      }
+      _lastResolvedAuthenticityToken = result.data!.qrToken;
       statusMessage = 'Authenticity verified for ${result.data!.serialNumber}.';
       notifyListeners();
       return result.data;
     }
 
     scannedAuthenticity = null;
+    if (openPublicRoute) {
+      publicAuthenticityRoute = null;
+    }
     errorMessage = result.message;
     notifyListeners();
     return null;
+  }
+
+  Future<PublicAuthenticityRecord?> resolveAuthenticityInput({
+    required String rawInput,
+    bool openPublicRoute = true,
+    bool switchToScanTab = true,
+  }) async {
+    final AuthenticityRouteMatch? match = AuthenticityRouteParser.parseRaw(
+      rawInput,
+    );
+    if (match == null) {
+      errorMessage =
+          'Scan a valid One of One authenticity QR or paste a public authenticity link.';
+      statusMessage = null;
+      scannedAuthenticity = null;
+      publicAuthenticityRoute = null;
+      notifyListeners();
+      return null;
+    }
+
+    if (_lastResolvedAuthenticityToken == match.qrToken &&
+        publicAuthenticityRoute?.qrToken == match.qrToken &&
+        openPublicRoute) {
+      if (switchToScanTab) {
+        index = 2;
+      }
+      notifyListeners();
+      return publicAuthenticityRoute;
+    }
+
+    return lookupPublicAuthenticity(
+      qrToken: match.qrToken,
+      openPublicRoute: openPublicRoute,
+      switchToScanTab: switchToScanTab,
+    );
+  }
+
+  void clearPublicAuthenticityRoute() {
+    publicAuthenticityRoute = null;
+    notifyListeners();
+  }
+
+  void continueFromPublicAuthenticity() {
+    publicAuthenticityRoute = null;
+    if (isAuthenticated) {
+      index = 2;
+    }
+    notifyListeners();
   }
 
   Future<String> claimScannedItem({required String claimCode}) async {
@@ -812,6 +931,7 @@ class CustomerController extends ChangeNotifier {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _authenticityLinkSubscription?.cancel();
     super.dispose();
   }
 }
@@ -1573,9 +1693,14 @@ class ItemDetailScreen extends StatelessWidget {
 }
 
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({required this.controller, super.key});
+  const ScanScreen({
+    required this.controller,
+    required this.enableCameraScanner,
+    super.key,
+  });
 
   final CustomerController controller;
+  final bool enableCameraScanner;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -1584,12 +1709,53 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   final TextEditingController _qrTokenController = TextEditingController();
   final TextEditingController _claimCodeController = TextEditingController();
+  final MobileScannerController _cameraController = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+  );
+  bool _handlingScan = false;
+  String? _lastScanPayload;
 
   @override
   void dispose() {
+    _cameraController.dispose();
     _qrTokenController.dispose();
     _claimCodeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _verifyManualInput() async {
+    await widget.controller.resolveAuthenticityInput(
+      rawInput: _qrTokenController.text,
+      openPublicRoute: true,
+      switchToScanTab: true,
+    );
+  }
+
+  Future<void> _handleBarcodeCapture(BarcodeCapture capture) async {
+    if (_handlingScan) {
+      return;
+    }
+
+    String? rawValue;
+    for (final Barcode barcode in capture.barcodes) {
+      final String? candidate = barcode.rawValue?.trim();
+      if (candidate != null && candidate.isNotEmpty) {
+        rawValue = candidate;
+        break;
+      }
+    }
+    if (rawValue == null || rawValue.isEmpty || rawValue == _lastScanPayload) {
+      return;
+    }
+
+    _handlingScan = true;
+    _lastScanPayload = rawValue;
+    await widget.controller.resolveAuthenticityInput(
+      rawInput: rawValue,
+      openPublicRoute: true,
+      switchToScanTab: true,
+    );
+    _handlingScan = false;
   }
 
   @override
@@ -1614,6 +1780,47 @@ class _ScanScreenState extends State<ScanScreen> {
                   'Use the camera-ready public token or paste a deep-link token to resolve privacy-safe authenticity details from Supabase. Hidden claim codes stay separate from the public authenticity route.',
                 ),
                 const SizedBox(height: 16),
+                if (widget.enableCameraScanner && !kIsWeb) ...<Widget>[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          MobileScanner(
+                            controller: _cameraController,
+                            onDetect: _handleBarcodeCapture,
+                          ),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: OneOfOneTheme.gold.withValues(alpha: 0.65),
+                                width: 2,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Container(
+                              margin: const EdgeInsets.all(16),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Text(
+                                'Point the camera at a One of One authenticity QR to open the public authenticity record.',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 TextField(
                   controller: _qrTokenController,
                   decoration: const InputDecoration(
@@ -1626,22 +1833,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () async {
-                      final PublicAuthenticityRecord? record = await widget
-                          .controller
-                          .lookupPublicAuthenticity(
-                            qrToken: _qrTokenController.text,
-                          );
-                      if (!context.mounted || record == null) {
-                        return;
-                      }
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              PublicAuthenticityPage(record: record),
-                        ),
-                      );
-                    },
+                    onPressed: _verifyManualInput,
                     child: const Text('Verify authenticity'),
                   ),
                 ),
@@ -1726,15 +1918,22 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 }
 
-class PublicAuthenticityPage extends StatelessWidget {
-  const PublicAuthenticityPage({required this.record, super.key});
+class PublicAuthenticityScaffold extends StatelessWidget {
+  const PublicAuthenticityScaffold({required this.controller, super.key});
 
-  final PublicAuthenticityRecord record;
+  final CustomerController controller;
 
   @override
   Widget build(BuildContext context) {
+    final PublicAuthenticityRecord record = controller.publicAuthenticityRoute!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Authenticity verified')),
+      appBar: AppBar(
+        title: const Text('Authenticity verified'),
+        leading: IconButton(
+          onPressed: controller.clearPublicAuthenticityRoute,
+          icon: const Icon(Icons.arrow_back),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: <Widget>[
@@ -1763,6 +1962,37 @@ class PublicAuthenticityPage extends StatelessWidget {
                   Text('Ownership visibility: ${record.ownershipVisibility}'),
                   Text(
                     'Verified resale history: ${record.verifiedTransferCount} transfer(s).',
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    color: const Color(0xFF151515),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          const Text('Claim remains private'),
+                          const SizedBox(height: 8),
+                          Text(
+                            controller.isAuthenticated
+                                ? 'Use the packaged hidden claim code from the Scan tab to request ownership. That code never appears in the public authenticity result.'
+                                : 'The public authenticity route verifies the collectible only. Hidden claim codes stay packaged separately and require a signed-in collector flow.',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: controller.continueFromPublicAuthenticity,
+                      child: Text(
+                        controller.isAuthenticated
+                            ? 'Continue to scan and claim'
+                            : 'Back to collector sign in',
+                      ),
+                    ),
                   ),
                 ],
               ),
