@@ -13,6 +13,7 @@ class UniqueItem {
     required this.currentOwnerUserId,
     required this.claimCodeConsumed,
     required this.askingPrice,
+    this.imageUrls = const <String>[],
   });
 
   final String id;
@@ -24,12 +25,14 @@ class UniqueItem {
   final String? currentOwnerUserId;
   final bool claimCodeConsumed;
   final int? askingPrice;
+  final List<String> imageUrls;
 
   UniqueItem copyWith({
     ItemState? state,
     Object? currentOwnerUserId = _uniqueItemUnset,
     bool? claimCodeConsumed,
     Object? askingPrice = _uniqueItemUnset,
+    List<String>? imageUrls,
   }) {
     return UniqueItem(
       id: id,
@@ -45,6 +48,7 @@ class UniqueItem {
       askingPrice: askingPrice == _uniqueItemUnset
           ? this.askingPrice
           : askingPrice as int?,
+      imageUrls: imageUrls ?? this.imageUrls,
     );
   }
 }

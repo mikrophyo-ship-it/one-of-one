@@ -15,6 +15,7 @@ class CatalogPanel extends StatelessWidget {
     required this.onCreateInventory,
     required this.onCreateAuthenticityRecord,
     required this.onUpsertListing,
+    required this.onUploadInventoryImage,
     super.key,
   });
 
@@ -27,9 +28,18 @@ class CatalogPanel extends StatelessWidget {
   final VoidCallback onCreateInventory;
   final Future<void> Function(AdminInventoryRecord item) onCreateAuthenticityRecord;
   final Future<void> Function(AdminInventoryRecord item) onUpsertListing;
+  final Future<void> Function(AdminInventoryRecord item) onUploadInventoryImage;
+
+  static final ButtonStyle _compactActionStyle = FilledButton.styleFrom(
+    minimumSize: const Size(0, 34),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    visualDensity: VisualDensity.compact,
+  );
 
   @override
   Widget build(BuildContext context) {
+    final ScrollController inventoryScrollController = ScrollController();
     return ListView(
       padding: const EdgeInsets.all(20),
       children: <Widget>[
@@ -168,8 +178,10 @@ class CatalogPanel extends StatelessWidget {
           child: inventory.isEmpty
               ? const EmptyState(message: 'No inventory available.')
               : Scrollbar(
+                  controller: inventoryScrollController,
                   thumbVisibility: true,
                   child: SingleChildScrollView(
+                    controller: inventoryScrollController,
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
                       horizontalMargin: 12,
@@ -253,20 +265,27 @@ class CatalogPanel extends StatelessWidget {
                             ),
                             DataCell(
                               SizedBox(
-                                width: 160,
+                                width: 220,
                                 child: Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: <Widget>[
                                     if (!item.hasAuthenticityRecord)
-                                      FilledButton.tonal(
+                                  FilledButton.tonal(
+                                        style: _compactActionStyle,
                                         onPressed: () =>
                                             onCreateAuthenticityRecord(item),
                                         child: const Text('Link'),
                                       ),
+                                    IconButton(
+                                      tooltip: 'Upload editorial photo',
+                                      onPressed: () => onUploadInventoryImage(item),
+                                      icon: const Icon(Icons.add_a_photo_outlined),
+                                    ),
                                     if (item.hasAuthenticityRecord &&
                                         item.listingStatus == null)
                                       FilledButton.tonal(
+                                        style: _compactActionStyle,
                                         onPressed: () => onUpsertListing(item),
                                         child: const Text('List'),
                                       ),
@@ -274,6 +293,7 @@ class CatalogPanel extends StatelessWidget {
                                         item.listingStatus != null &&
                                         item.listingStatus != 'active')
                                       FilledButton.tonal(
+                                        style: _compactActionStyle,
                                         onPressed: () => onUpsertListing(item),
                                         child: const Text('Publish'),
                                       ),

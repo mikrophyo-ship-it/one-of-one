@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:domain/domain.dart';
 
 abstract class AdminOperationsRepository {
@@ -63,6 +65,13 @@ abstract class AdminOperationsRepository {
     required String itemId,
     required int askingPriceCents,
     required String status,
+  });
+
+  Future<MarketplaceActionResult<void>> uploadInventoryImage({
+    required String itemId,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
   });
 
   Future<MarketplaceActionResult<void>> flagItemStatus({

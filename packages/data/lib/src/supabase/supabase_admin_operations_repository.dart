@@ -1,5 +1,7 @@
 // ignore_for_file: unnecessary_non_null_assertion
 
+import 'dart:typed_data';
+
 import 'package:domain/domain.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -427,6 +429,73 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       );
     } on PostgrestException catch (error) {
       return MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> uploadInventoryImage({
+    required String itemId,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    final MarketplaceActionResult<void> accessCheck =
+        await _assertAdminAccess();
+    if (!accessCheck.success) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: accessCheck.message,
+      );
+    }
+
+    final String sanitizedName = fileName.replaceAll(
+      RegExp(r'[^a-zA-Z0-9._-]'),
+      '_',
+    );
+    final String storagePath =
+        'inventory/$itemId/${DateTime.now().millisecondsSinceEpoch}_$sanitizedName';
+
+    try {
+      await _client!.storage.from('garment-editorial').uploadBinary(
+        storagePath,
+        bytes,
+        fileOptions: FileOptions(
+          contentType: contentType,
+          upsert: false,
+        ),
+      );
+      await _client!.rpc(
+        'admin_attach_item_media_asset',
+        params: <String, dynamic>{
+          'p_item_id': itemId,
+          'p_storage_bucket': 'garment-editorial',
+          'p_storage_path': storagePath,
+          'p_media_type': contentType,
+          'p_visibility': 'public',
+        },
+      );
+      return const MarketplaceActionResult<void>(
+        success: true,
+        message: 'Editorial image uploaded for the collectible.',
+      );
+    } on StorageException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: error.toString(),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<void>(
         success: false,
         message: _friendlyMessage(error.message),
       );

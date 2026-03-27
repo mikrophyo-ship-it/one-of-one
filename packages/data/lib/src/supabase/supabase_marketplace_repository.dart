@@ -24,9 +24,17 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       <String, List<OwnershipRecord>>{};
   List<SavedCollectible> _savedItems = <SavedCollectible>[];
   List<CollectorNotification> _notifications = <CollectorNotification>[];
+  Map<String, List<ItemComment>> _commentsByItemId =
+      <String, List<ItemComment>>{};
 
   @override
   List<Listing> activeListings() => List<Listing>.unmodifiable(_listings);
+
+  @override
+  List<ItemComment> commentsForItem(String itemId) =>
+      List<ItemComment>.unmodifiable(
+        _commentsByItemId[itemId] ?? const <ItemComment>[],
+      );
 
   @override
   Artwork? artworkById(String artworkId) {
@@ -132,6 +140,47 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       );
     } on PostgrestException catch (error) {
       return MarketplaceActionResult<UniqueItem>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<ItemComment>> addItemComment({
+    required String itemId,
+    required String body,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<ItemComment>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final dynamic row = await _client!.rpc(
+        'add_item_comment',
+        params: <String, dynamic>{
+          'p_item_id': itemId,
+          'p_body': body,
+        },
+      );
+      final ItemComment comment = _itemCommentFromRow(
+        row as Map<String, dynamic>,
+      );
+      _commentsByItemId[itemId] = <ItemComment>[
+        comment,
+        ...(_commentsByItemId[itemId] ?? const <ItemComment>[]),
+      ];
+      return MarketplaceActionResult<ItemComment>(
+        success: true,
+        message: 'Comment posted to the collectible conversation.',
+        data: comment,
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<ItemComment>(
         success: false,
         message: _friendlyMessage(error),
       );
@@ -550,6 +599,7 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       _histories = <String, List<OwnershipRecord>>{};
       _savedItems = <SavedCollectible>[];
       _notifications = <CollectorNotification>[];
+      _commentsByItemId = <String, List<ItemComment>>{};
       return;
     }
 
@@ -563,6 +613,15 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     final List<dynamic> catalogRows = await _client!
         .from('public_collectible_catalog')
         .select();
+    final List<dynamic> mediaRows = await _client!
+        .from('media_assets')
+        .select(
+          'storage_bucket, storage_path, linked_entity_id, visibility, media_type',
+        )
+        .eq('linked_entity_type', 'unique_item')
+        .eq('visibility', 'public');
+    final List<dynamic> commentRows = await _client!
+        .rpc('get_public_item_comments') as List<dynamic>;
 
     List<dynamic> myCollectibleRows = <dynamic>[];
     List<dynamic> savedItemRows = <dynamic>[];
@@ -607,6 +666,19 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
 
     final Map<String, List<OwnershipRecord>> histories =
         <String, List<OwnershipRecord>>{};
+    final Map<String, List<String>> mediaByItemId = <String, List<String>>{};
+    for (final dynamic row in mediaRows) {
+      final Map<String, dynamic> map = row as Map<String, dynamic>;
+      final String itemId = map['linked_entity_id'].toString();
+      final String url = _publicMediaUrl(map);
+      mediaByItemId.putIfAbsent(itemId, () => <String>[]).add(url);
+    }
+    final Map<String, List<ItemComment>> commentsByItemId =
+        <String, List<ItemComment>>{};
+    for (final dynamic row in commentRows) {
+      final ItemComment comment = _itemCommentFromRow(row as Map<String, dynamic>);
+      commentsByItemId.putIfAbsent(comment.itemId, () => <ItemComment>[]).add(comment);
+    }
     for (final dynamic row in myCollectibleRows) {
       final Map<String, dynamic> map = row as Map<String, dynamic>;
       final UniqueItem item = _ownedItemFromRow(
@@ -629,6 +701,13 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     }
 
     _items = mergedItems.values.toList()
+      ..replaceRange(
+        0,
+        mergedItems.length,
+        mergedItems.values.map((UniqueItem item) {
+          return item.copyWith(imageUrls: mediaByItemId[item.id] ?? const <String>[]);
+        }),
+      )
       ..sort(
         (UniqueItem a, UniqueItem b) =>
             a.serialNumber.compareTo(b.serialNumber),
@@ -643,6 +722,7 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
           (dynamic row) => _notificationFromRow(row as Map<String, dynamic>),
         )
         .toList();
+    _commentsByItemId = commentsByItemId;
   }
 
   @override
@@ -858,6 +938,25 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       createdAt: DateTime.parse(row['created_at'].toString()),
       read: row['is_read'] == true,
     );
+  }
+
+  ItemComment _itemCommentFromRow(Map<String, dynamic> row) {
+    return ItemComment(
+      id: row['comment_id'].toString(),
+      itemId: row['item_id'].toString(),
+      userDisplayName: row['user_display_name'].toString(),
+      body: row['body'].toString(),
+      createdAt: DateTime.parse(row['created_at'].toString()),
+    );
+  }
+
+  String _publicMediaUrl(Map<String, dynamic> row) {
+    final String bucket = row['storage_bucket'].toString();
+    final String path = row['storage_path'].toString();
+    if (bucket == 'external') {
+      return path;
+    }
+    return _client!.storage.from(bucket).getPublicUrl(path);
   }
 
   PublicAuthenticityRecord _publicAuthenticityFromRow(

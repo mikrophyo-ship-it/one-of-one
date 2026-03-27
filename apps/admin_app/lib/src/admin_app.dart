@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:core_ui/core_ui.dart';
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:services/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -203,6 +204,7 @@ class _AdminShellState extends State<AdminShell> {
         onCreateInventory: _createInventory,
         onCreateAuthenticityRecord: _createAuthenticityRecord,
         onUpsertListing: _upsertListing,
+        onUploadInventoryImage: _uploadInventoryImage,
       ),
       AuditPanel(audits: _snapshot?.audits ?? const <AdminAuditRecord>[]),
       SettingsPanel(settings: _snapshot?.settings, onSave: _saveSettings),
@@ -601,6 +603,50 @@ class _AdminShellState extends State<AdminShell> {
     });
   }
 
+  Future<void> _uploadInventoryImage(AdminInventoryRecord item) async {
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final PlatformFile file = result.files.first;
+    if (file.bytes == null) {
+      setState(() {
+        _bannerMessage = 'Selected image data was not readable.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
+    final String fileName = file.name.trim().isEmpty ? 'editorial-image.jpg' : file.name;
+    final String contentType = _contentTypeForFileName(fileName);
+    final MarketplaceActionResult<void> uploadResult = await _adminService
+        .uploadInventoryImage(
+          itemId: item.itemId,
+          bytes: file.bytes!,
+          fileName: fileName,
+          contentType: contentType,
+        );
+    if (!mounted) {
+      return;
+    }
+
+    if (uploadResult.success) {
+      await _refreshAdminData();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    setState(() {
+      _bannerMessage = uploadResult.message;
+      _bannerIsError = !uploadResult.success;
+    });
+  }
+
   Future<String?> _promptForNote({
     required String title,
     required String hint,
@@ -636,6 +682,20 @@ class _AdminShellState extends State<AdminShell> {
     );
     return result;
   }
+}
+
+String _contentTypeForFileName(String fileName) {
+  final String lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (lowerName.endsWith('.webp')) {
+    return 'image/webp';
+  }
+  if (lowerName.endsWith('.gif')) {
+    return 'image/gif';
+  }
+  return 'image/jpeg';
 }
 
 class ConfigState extends StatelessWidget {

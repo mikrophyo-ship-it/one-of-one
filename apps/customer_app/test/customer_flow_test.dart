@@ -12,6 +12,11 @@ void main() {
   testWidgets(
     'customer app automated verification covers auth, catalog, authenticity, collection, saved items, disputes, restrictions, and relogin',
     (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final DemoCatalog repository = DemoCatalog();
       final _TestAuthService authService = _TestAuthService();
       final MarketplaceWorkflowService workflowService =
@@ -53,13 +58,25 @@ void main() {
 
       expect(find.text('Featured artists'), findsOneWidget);
       expect(find.text('Maya Vale'), findsOneWidget);
+      await tester.tap(find.text('Maya Vale').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Artist statement'), findsOneWidget);
+      expect(find.text('Available works'), findsOneWidget);
+      expect(find.text('Afterglow No. 01'), findsAtLeastNWidgets(1));
+      await tester.pageBack();
+      await tester.pumpAndSettle();
 
       await _tapNav(tester, 'Shop');
       expect(find.text('Afterglow Hand-Finished Tee'), findsOneWidget);
       expect(find.text('Ember Archive Crew'), findsOneWidget);
       expect(find.text('Restricted Study Hoodie'), findsOneWidget);
 
-      await tester.tap(find.text('Afterglow Hand-Finished Tee'));
+      final Finder afterglowCard = find.ancestor(
+        of: find.text('Afterglow Hand-Finished Tee'),
+        matching: find.byType(InkWell),
+      ).first;
+      await tester.ensureVisible(afterglowCard);
+      await tester.tap(afterglowCard);
       await tester.pumpAndSettle();
       expect(find.text('Afterglow No. 01'), findsOneWidget);
       expect(find.text('Provenance proof'), findsOneWidget);
@@ -68,6 +85,12 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.byIcon(Icons.bookmark_border).first,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.bookmark_border).first);
       await tester.pumpAndSettle();
 
@@ -101,17 +124,26 @@ void main() {
 
       await _tapNav(tester, 'Vault');
       expect(find.text('Ember Archive Crew'), findsOneWidget);
-
-      await _tapNav(tester, 'Shop');
-      await tester.tap(find.text('Ember Archive Crew'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Open & resell'));
       await tester.pumpAndSettle();
+      expect(find.text('Ember Archive Crew'), findsAtLeastNWidgets(1));
       await _scrollUntilVisible(tester, find.text('Resell item'));
       expect(find.text('Resell item'), findsOneWidget);
-
       await tester.tap(find.widgetWithText(OutlinedButton, 'Resell item'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Listing published'), findsOneWidget);
       await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      final Finder emberCard = find.ancestor(
+        of: find.text('Ember Archive Crew'),
+        matching: find.byType(InkWell),
+      ).first;
+      await tester.ensureVisible(emberCard);
+      await tester.tap(emberCard);
       await tester.pumpAndSettle();
       await tester.pageBack();
       await tester.pumpAndSettle();
@@ -123,7 +155,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.notifications_none));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Ember Archive Crew'));
+      await tester.ensureVisible(emberCard);
+      await tester.tap(emberCard);
       await tester.pumpAndSettle();
       await _scrollUntilVisible(tester, find.text('Report dispute'));
       await tester.tap(find.widgetWithText(OutlinedButton, 'Report dispute'));
@@ -134,9 +167,17 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('OOO-EM-0002 - disputed'), findsOneWidget);
+      await _tapNav(tester, 'Vault');
+      expect(find.text('Ember Archive Crew'), findsOneWidget);
+      expect(find.textContaining('Certificate active - disputed'), findsOneWidget);
 
-      await tester.tap(find.text('Restricted Study Hoodie'));
+      await _tapNav(tester, 'Shop');
+      final Finder restrictedCard = find.ancestor(
+        of: find.text('Restricted Study Hoodie'),
+        matching: find.byType(InkWell),
+      ).first;
+      await tester.ensureVisible(restrictedCard);
+      await tester.tap(restrictedCard);
       await tester.pumpAndSettle();
       expect(find.text('Authorize checkout'), findsNothing);
       expect(find.text('Resell item'), findsNothing);
@@ -153,6 +194,11 @@ void main() {
   testWidgets('customer app signs in with an existing collector account', (
     WidgetTester tester,
   ) async {
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final DemoCatalog repository = DemoCatalog();
     final _TestAuthService authService = _TestAuthService()
       ..seedAccount(
@@ -192,6 +238,11 @@ void main() {
   testWidgets(
     'customer app restores an existing collector session on startup',
     (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final DemoCatalog repository = DemoCatalog();
       final _TestAuthService authService = _TestAuthService(
         initialSession: _buildSession(
@@ -227,6 +278,11 @@ void main() {
   testWidgets(
     'customer app opens the public authenticity route from a deep link before sign in',
     (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final DemoCatalog repository = DemoCatalog();
 
       await tester.pumpWidget(

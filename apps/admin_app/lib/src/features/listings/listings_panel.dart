@@ -29,6 +29,10 @@ class ListingsPanel extends StatelessWidget {
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
+                horizontalMargin: 12,
+                columnSpacing: 16,
+                dataRowMinHeight: 88,
+                dataRowMaxHeight: 120,
                 columns: const <DataColumn>[
                   DataColumn(label: Text('Serial')),
                   DataColumn(label: Text('Artist / work')),
@@ -65,52 +69,57 @@ class ListingsPanel extends StatelessWidget {
                       DataCell(StatusPill(label: listing.listingStatus)),
                       DataCell(StatusPill(label: listing.itemState)),
                       DataCell(
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: <Widget>[
-                            OutlinedButton(
-                              onPressed: () =>
-                                  onModerateListing(listing, 'block'),
-                              child: const Text('Block'),
-                            ),
-                            OutlinedButton(
-                              onPressed:
-                                  listing.listingStatus == 'blocked_by_admin'
-                                  ? () => onModerateListing(listing, 'restore')
-                                  : null,
-                              child: const Text('Restore'),
-                            ),
-                            OutlinedButton(
-                              onPressed: () =>
-                                  onModerateListing(listing, 'cancel'),
-                              child: const Text('Cancel'),
-                            ),
-                            TextButton(
-                              onPressed: () => onFlagItem(
-                                listing.itemId,
-                                'frozen',
-                                'Freeze item',
+                        SizedBox(
+                          width: 360,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: <Widget>[
+                              OutlinedButton(
+                                onPressed: () =>
+                                    onModerateListing(listing, 'block'),
+                                child: const Text('Block'),
                               ),
-                              child: const Text('Freeze'),
-                            ),
-                            TextButton(
-                              onPressed: () => onFlagItem(
-                                listing.itemId,
-                                'stolen_flagged',
-                                'Flag stolen item',
+                              OutlinedButton(
+                                onPressed:
+                                    listing.listingStatus == 'blocked_by_admin'
+                                    ? () =>
+                                          onModerateListing(listing, 'restore')
+                                    : null,
+                                child: const Text('Restore'),
                               ),
-                              child: const Text('Flag stolen'),
-                            ),
-                            TextButton(
-                              onPressed: () => onFlagItem(
-                                listing.itemId,
-                                'claimed',
-                                'Release to claimed state',
+                              OutlinedButton(
+                                onPressed: () =>
+                                    onModerateListing(listing, 'cancel'),
+                                child: const Text('Cancel'),
                               ),
-                              child: const Text('Release'),
-                            ),
-                          ],
+                              TextButton(
+                                onPressed: () => onFlagItem(
+                                  listing.itemId,
+                                  'frozen',
+                                  'Freeze item',
+                                ),
+                                child: const Text('Freeze'),
+                              ),
+                              TextButton(
+                                onPressed: () => onFlagItem(
+                                  listing.itemId,
+                                  'stolen_flagged',
+                                  'Flag stolen item',
+                                ),
+                                child: const Text('Flag stolen'),
+                              ),
+                              TextButton(
+                                onPressed: () => onFlagItem(
+                                  listing.itemId,
+                                  'claimed',
+                                  'Release to claimed state',
+                                ),
+                                child: const Text('Release'),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],

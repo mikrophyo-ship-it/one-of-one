@@ -21,12 +21,13 @@ One of One is a premium collectible fashion marketplace for original human-made 
 - `supabase/seed`
 - `docs/architecture.md`
 - `docs/backend_contract.md`
+- `docs/roadmap.md`
 
 ## Local setup
 1. Install Flutter and Dart 3.10+.
 2. Copy `.env.example` to `.env` and fill in your Supabase values.
 3. Run `dart pub get` from the workspace root or per package/app.
-4. Apply `supabase/migrations/0001_init.sql`, `supabase/migrations/0002_marketplace_hardening.sql`, `supabase/migrations/0003_backend_contract_completion.sql`, `supabase/migrations/0004_customer_read_contract.sql`, `supabase/migrations/0005_qr_claim_contract.sql`, `supabase/migrations/0006_admin_operations_contract.sql`, `supabase/migrations/0007_admin_read_gateways.sql`, `supabase/migrations/0008_fix_admin_role_rls_recursion.sql`, `supabase/migrations/0009_v2_commercial_maturity.sql`, `supabase/migrations/0010_stripe_checkout_reconciliation.sql`, `supabase/migrations/0011_payment_reconciliation_refs.sql`, `supabase/migrations/0012_admin_artwork_concept_note_fix.sql`, `supabase/migrations/0013_admin_garment_product_directory.sql`, `supabase/migrations/0014_inventory_qr_claim_generation.sql`, `supabase/migrations/0015_admin_inventory_publish_workflow.sql`, and `supabase/seed/seed.sql` to your Supabase project.
+4. Apply `supabase/migrations/0001_init.sql`, `supabase/migrations/0002_marketplace_hardening.sql`, `supabase/migrations/0003_backend_contract_completion.sql`, `supabase/migrations/0004_customer_read_contract.sql`, `supabase/migrations/0005_qr_claim_contract.sql`, `supabase/migrations/0006_admin_operations_contract.sql`, `supabase/migrations/0007_admin_read_gateways.sql`, `supabase/migrations/0008_fix_admin_role_rls_recursion.sql`, `supabase/migrations/0009_v2_commercial_maturity.sql`, `supabase/migrations/0010_stripe_checkout_reconciliation.sql`, `supabase/migrations/0011_payment_reconciliation_refs.sql`, `supabase/migrations/0012_admin_artwork_concept_note_fix.sql`, `supabase/migrations/0013_admin_garment_product_directory.sql`, `supabase/migrations/0014_inventory_qr_claim_generation.sql`, `supabase/migrations/0015_admin_inventory_publish_workflow.sql`, `supabase/migrations/0016_claim_digest_extension_fix.sql`, `supabase/migrations/0017_item_media_and_comments.sql`, and `supabase/seed/seed.sql` to your Supabase project.
 5. Create real local-dev users through Supabase Auth, not through SQL inserts into `auth.users`.
 6. After sign-in, call `public.upsert_my_profile(display_name, username, avatar_url)` for each account.
 7. Grant an admin role with `public.admin_set_user_role(user_id, role)` from an existing admin account or dashboard bootstrap step.
@@ -45,6 +46,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 ## Backend contract docs
 - See `docs/backend_contract.md` for the lifecycle, RPCs, views, and local-dev flow.
 - See `docs/payment_configuration.md` for local, staging, and production Stripe setup.
+- See `docs/roadmap.md` for planned future scope including artist accounts and portal direction.
 - See `scripts/stripe/stripe_test_mode_commands.ps1` for a quick Stripe CLI helper.
 
 ## Tradeoffs
@@ -53,6 +55,7 @@ One of One is a premium collectible fashion marketplace for original human-made 
 - Stripe-hosted checkout and webhook reconciliation are wired for the production-safe V2 payment path, but live deployment still depends on environment-specific Stripe secrets and hosted return URLs.
 - The admin console is backend-driven for disputes, listing moderation, customer roles, audit review, freeze controls, and settings persistence, but still needs broader auth hardening and richer operational filtering over time.
 - Newly created inventory now needs the admin publish workflow: create the linked authenticity record, then create or publish the listing from the admin catalog so the item becomes visible and buyable in the customer app without manual SQL.
+- Editorial item imagery and customer comments now depend on `0017_item_media_and_comments.sql`, which adds public collectible media attachment and authenticated comment RPCs without exposing hidden claim data.
 
 ## Deferred to V2
 - NFC and Bluetooth transfer verification

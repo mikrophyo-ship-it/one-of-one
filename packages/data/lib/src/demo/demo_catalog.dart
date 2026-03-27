@@ -21,6 +21,9 @@ class DemoCatalog implements MarketplaceRepository {
         currentOwnerUserId: 'user_collector_1',
         claimCodeConsumed: true,
         askingPrice: 180000,
+        imageUrls: <String>[
+          'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1200&q=80',
+        ],
       ),
       const UniqueItem(
         id: 'item_ember_02',
@@ -32,6 +35,9 @@ class DemoCatalog implements MarketplaceRepository {
         currentOwnerUserId: null,
         claimCodeConsumed: false,
         askingPrice: null,
+        imageUrls: <String>[
+          'https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?auto=format&fit=crop&w=1200&q=80',
+        ],
       ),
       const UniqueItem(
         id: 'item_restricted_03',
@@ -43,6 +49,9 @@ class DemoCatalog implements MarketplaceRepository {
         currentOwnerUserId: 'user_collector_2',
         claimCodeConsumed: true,
         askingPrice: null,
+        imageUrls: <String>[
+          'https://images.unsplash.com/photo-1523398002811-999ca8dec234?auto=format&fit=crop&w=1200&q=80',
+        ],
       ),
     ];
     _qrTokens = <String, String>{
@@ -113,10 +122,24 @@ class DemoCatalog implements MarketplaceRepository {
   late final List<OwnershipRecord> _ownershipRecords;
   final List<SavedCollectible> _savedItems = <SavedCollectible>[];
   final List<CollectorNotification> _notifications = <CollectorNotification>[];
+  final List<ItemComment> _comments = <ItemComment>[
+    ItemComment(
+      id: 'comment_1',
+      itemId: 'item_afterglow_01',
+      userDisplayName: 'Archive Collector',
+      body: 'The finish work on this release looks incredible in person.',
+      createdAt: DateTime(2026, 3, 12),
+    ),
+  ];
 
   @override
   List<Listing> activeListings() => List<Listing>.unmodifiable(
     _listings.where((Listing listing) => listing.isActive),
+  );
+
+  @override
+  List<ItemComment> commentsForItem(String itemId) => List<ItemComment>.unmodifiable(
+    _comments.where((ItemComment comment) => comment.itemId == itemId),
   );
 
   @override
@@ -201,6 +224,34 @@ class DemoCatalog implements MarketplaceRepository {
       message:
           'Payment captured with reference $providerReference. Ownership transferred on-platform.',
       data: transferred,
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<ItemComment>> addItemComment({
+    required String itemId,
+    required String body,
+  }) async {
+    final String trimmedBody = body.trim();
+    if (trimmedBody.isEmpty) {
+      return const MarketplaceActionResult<ItemComment>(
+        success: false,
+        message: 'Write a comment before posting.',
+      );
+    }
+
+    final ItemComment comment = ItemComment(
+      id: 'comment_${_comments.length + 1}',
+      itemId: itemId,
+      userDisplayName: 'Current Collector',
+      body: trimmedBody,
+      createdAt: DateTime.now(),
+    );
+    _comments.insert(0, comment);
+    return MarketplaceActionResult<ItemComment>(
+      success: true,
+      message: 'Comment posted to the collectible conversation.',
+      data: comment,
     );
   }
 

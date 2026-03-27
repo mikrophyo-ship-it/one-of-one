@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:admin_app/src/admin_app.dart';
 import 'package:data/data.dart';
@@ -49,9 +50,15 @@ void main() {
 
       await _tapRailLabel(tester, 'Catalog');
       expect(find.text('OOO-NEW-0002'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.widgetWithText(FilledButton, 'Link').first,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       await _tapVisible(
         tester,
-        find.widgetWithText(FilledButton, 'Link Authenticity').first,
+        find.widgetWithText(FilledButton, 'Link').first,
       );
       expect(
         find.text('Authenticity record linked to inventory item.'),
@@ -61,7 +68,7 @@ void main() {
 
       await _tapVisible(
         tester,
-        find.widgetWithText(FilledButton, 'Create Listing').first,
+        find.widgetWithText(FilledButton, 'List').first,
       );
       await _enterField(tester, 'Asking price (cents)', '210000');
       await tester.tap(find.widgetWithText(FilledButton, 'Create listing'));
@@ -863,6 +870,29 @@ class _FakeAdminRepository implements AdminOperationsRepository {
           ? 'Listing published for sale.'
           : 'Listing saved.',
       data: _inventory[index],
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> uploadInventoryImage({
+    required String itemId,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  }) async {
+    _addAudit(
+      action: 'admin_attach_item_media_asset',
+      entityType: 'media_asset',
+      entityId: itemId,
+      payload: <String, dynamic>{
+        'file_name': fileName,
+        'content_type': contentType,
+      },
+    );
+    _rebuildSnapshot();
+    return const MarketplaceActionResult<void>(
+      success: true,
+      message: 'Editorial image uploaded for the collectible.',
     );
   }
 

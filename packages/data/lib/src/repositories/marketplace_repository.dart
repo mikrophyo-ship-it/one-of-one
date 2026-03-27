@@ -5,6 +5,7 @@ abstract class MarketplaceRepository {
   List<Artwork> artworks();
   List<UniqueItem> items();
   List<Listing> activeListings();
+  List<ItemComment> commentsForItem(String itemId);
   List<OwnershipRecord> ownershipHistory(String itemId);
   UniqueItem? itemById(String itemId);
   Artwork? artworkById(String artworkId);
@@ -64,6 +65,10 @@ abstract class MarketplaceRepository {
   fetchNotifications();
   Future<MarketplaceActionResult<void>> saveItem({required String itemId});
   Future<MarketplaceActionResult<void>> removeSavedItem({required String itemId});
+  Future<MarketplaceActionResult<ItemComment>> addItemComment({
+    required String itemId,
+    required String body,
+  });
   Future<MarketplaceActionResult<UniqueItem>> buyResaleItem({
     required String itemId,
     required String buyerUserId,

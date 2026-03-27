@@ -306,6 +306,7 @@ class CustomerController extends ChangeNotifier {
   List<UniqueItem> get savedItems => items
       .where((UniqueItem item) => savedItemIds.contains(item.id))
       .toList();
+  List<ItemComment> commentsFor(String itemId) => _repository.commentsForItem(itemId);
 
   Future<void> initialize() async {
     _authSubscription ??= _authService.authStateChanges().listen((AuthState _) {
@@ -340,6 +341,23 @@ class CustomerController extends ChangeNotifier {
       return direct;
     }
     return artworks.isEmpty ? null : artworks.first;
+  }
+
+  List<Artwork> artworksForArtist(String artistId) => artworks
+      .where((Artwork artwork) => artwork.artistId == artistId)
+      .toList(growable: false);
+
+  List<UniqueItem> itemsForArtist(String artistId) => items
+      .where((UniqueItem item) => item.artistId == artistId)
+      .toList(growable: false);
+
+  Listing? listingForItem(String itemId) {
+    for (final Listing listing in listings) {
+      if (listing.itemId == itemId) {
+        return listing;
+      }
+    }
+    return null;
   }
 
   List<OwnershipRecord> historyFor(String itemId) =>
@@ -697,6 +715,29 @@ class CustomerController extends ChangeNotifier {
         : 'Hosted Stripe checkout is ready${session.checkoutUrl == null ? '.' : ': ${session.checkoutUrl}'}';
     notifyListeners();
     return statusMessage!;
+  }
+
+  Future<String> addComment({
+    required String itemId,
+    required String body,
+  }) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return _failAction(authMessage);
+    }
+
+    return _runAction<ItemComment>(
+      operation: () => _repository.addItemComment(itemId: itemId, body: body),
+      onSuccess: (ItemComment? comment, String message) {
+        if (comment != null) {
+          _prependLocalNotification(
+            title: 'New comment',
+            body: 'Conversation updated for ${itemById(itemId)?.serialNumber ?? itemId}.',
+          );
+        }
+        return message;
+      },
+    );
   }
 
   Future<String> confirmDelivery({required String orderId}) async {
@@ -1345,9 +1386,21 @@ class HomeScreen extends StatelessWidget {
         ...controller.artists.map(
           (Artist artist) => Card(
             child: ListTile(
+              onTap: () => _openArtistProfile(context, controller, artist),
               title: Text(artist.displayName),
               subtitle: Text(artist.authenticityStatement),
-              trailing: Text('${artist.royaltyBps / 100}% royalty'),
+              trailing: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text('${artist.royaltyBps / 100}% royalty'),
+                  const SizedBox(height: 4),
+                  Text(
+                    'View',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1361,21 +1414,56 @@ class HomeScreen extends StatelessWidget {
             child: ListTile(title: Text('No live resale listings right now.')),
           ),
         ...controller.listings.map(
-          (Listing listing) => Card(
-            child: ListTile(
-              title: Text(
-                'Verified resale ${formatCurrency(listing.askingPrice)}',
+          (Listing listing) {
+            final UniqueItem? item = controller.itemById(listing.itemId);
+            final Artist? artist = item == null
+                ? null
+                : controller.artistFor(item);
+            final String title = item == null
+                ? 'Verified resale ${formatCurrency(listing.askingPrice)}'
+                : '${item.productName} ${formatCurrency(listing.askingPrice)}';
+            final String subtitle = item == null
+                ? 'Available now for verified on-platform resale.'
+                : '${artist?.displayName ?? 'Private seller'} • ${item.serialNumber}';
+            return Card(
+              child: ListTile(
+                onTap: item == null
+                    ? null
+                    : () => _openItemDetail(context, controller, item.id),
+                title: Text(title),
+                subtitle: Text(subtitle),
+                trailing: const Text('View'),
               ),
-              subtitle: Text(
-                'Listing ${listing.id} for item ${listing.itemId}',
-              ),
-              trailing: const Text('Private seller'),
-            ),
-          ),
+            );
+          },
         ),
       ],
     );
   }
+}
+
+void _openItemDetail(
+  BuildContext context,
+  CustomerController controller,
+  String itemId,
+) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ItemDetailScreen(controller: controller, itemId: itemId),
+    ),
+  );
+}
+
+void _openArtistProfile(
+  BuildContext context,
+  CustomerController controller,
+  Artist artist,
+) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ArtistProfileScreen(controller: controller, artist: artist),
+    ),
+  );
 }
 
 class _HeroPanel extends StatelessWidget {
@@ -1430,12 +1518,7 @@ class _HeroPanel extends StatelessWidget {
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      ItemDetailScreen(controller: controller, itemId: item.id),
-                ),
-              );
+              _openItemDetail(context, controller, item.id);
             },
             child: const Text('View collectible'),
           ),
@@ -1471,40 +1554,111 @@ class ExploreScreen extends StatelessWidget {
               ),
             ),
           ),
-        ...controller.items.map(
-          (UniqueItem item) => Card(
-            child: ListTile(
-              title: Text(item.productName),
-              subtitle: Text(
-                '${item.serialNumber} - ${item.state.key.replaceAll('_', ' ')}',
-              ),
-              trailing: Text(
-                item.askingPrice == null
-                    ? 'Held'
-                    : formatCurrency(item.askingPrice!),
-              ),
-              leading: IconButton(
-                onPressed: () => controller.toggleSavedItem(item.id),
-                icon: Icon(
-                  controller.savedItemIds.contains(item.id)
-                      ? Icons.bookmark
-                      : Icons.bookmark_border,
-                ),
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ItemDetailScreen(
-                      controller: controller,
-                      itemId: item.id,
-                    ),
-                  ),
-                );
-              },
-            ),
+        if (controller.items.isNotEmpty)
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 0.58,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: controller.items.map((UniqueItem item) {
+              return _ShopItemCard(
+                controller: controller,
+                item: item,
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+}
+
+class _ShopItemCard extends StatelessWidget {
+  const _ShopItemCard({
+    required this.controller,
+    required this.item,
+  });
+
+  final CustomerController controller;
+  final UniqueItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: () => _openItemDetail(context, controller, item.id),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF171717),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: OneOfOneTheme.gold.withValues(alpha: 0.18),
           ),
         ),
-      ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                child: _EditorialImage(
+                  imageUrl: item.imageUrls.isEmpty ? null : item.imageUrls.first,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    item.productName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.askingPrice == null
+                        ? 'Held'
+                        : formatCurrency(item.askingPrice!),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: OneOfOneTheme.gold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.state.key.replaceAll('_', ' '),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          item.serialNumber,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => controller.toggleSavedItem(item.id),
+                        icon: Icon(
+                          controller.savedItemIds.contains(item.id)
+                              ? Icons.bookmark
+                              : Icons.bookmark_border,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1521,32 +1675,27 @@ class ItemDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final UniqueItem? item = controller.itemById(itemId);
-    if (item == null) {
-      return const Scaffold(
-        body: Center(child: Text('Collectible not found.')),
-      );
-    }
-
-    final Artwork? artwork = controller.artworkFor(item);
-    final Artist? artist = controller.artistFor(item);
-    final FeeBreakdown breakdown = controller.breakdownFor(item);
-    final List<OwnershipRecord> history = controller.historyFor(item.id);
     return Scaffold(
-      appBar: AppBar(title: Text(item.productName)),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: <Widget>[
-          Container(
-            height: 240,
-            decoration: BoxDecoration(
-              color: const Color(0xFF191919),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.3)),
-            ),
-            child: const Center(
-              child: Text('Editorial garment image / human-made proof media'),
-            ),
+      appBar: AppBar(title: Text(controller.itemById(itemId)?.productName ?? 'Collectible')),
+      body: AnimatedBuilder(
+        animation: controller,
+        builder: (BuildContext context, _) {
+          final UniqueItem? item = controller.itemById(itemId);
+          if (item == null) {
+            return const Center(child: Text('Collectible not found.'));
+          }
+
+          final Artwork? artwork = controller.artworkFor(item);
+          final Artist? artist = controller.artistFor(item);
+          final FeeBreakdown breakdown = controller.breakdownFor(item);
+          final List<OwnershipRecord> history = controller.historyFor(item.id);
+          final List<ItemComment> comments = controller.commentsFor(item.id);
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: <Widget>[
+          SizedBox(
+            height: 320,
+            child: _InteractiveCollectiblePreview(item: item),
           ),
           const SizedBox(height: 16),
           Text(
@@ -1554,7 +1703,21 @@ class ItemDetailScreen extends StatelessWidget {
             style: Theme.of(context).textTheme.displaySmall,
           ),
           const SizedBox(height: 8),
-          Text('Artist: ${artist?.displayName ?? 'Unknown artist'}'),
+          InkWell(
+            onTap: artist == null
+                ? null
+                : () => _openArtistProfile(context, controller, artist),
+            child: Text(
+              'Artist: ${artist?.displayName ?? 'Unknown artist'}',
+              style: TextStyle(
+                color: artist == null ? null : OneOfOneTheme.gold,
+                decoration: artist == null
+                    ? TextDecoration.none
+                    : TextDecoration.underline,
+                decorationColor: OneOfOneTheme.gold,
+              ),
+            ),
+          ),
           Text('Serial: ${item.serialNumber}'),
           const Text('Authenticity: verified human-made artwork'),
           const SizedBox(height: 12),
@@ -1588,6 +1751,21 @@ class ItemDetailScreen extends StatelessWidget {
               ),
             ),
           ),
+          if (artist != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                onTap: () => _openArtistProfile(context, controller, artist),
+                title: Text(artist.displayName),
+                subtitle: Text(
+                  artist.authenticityStatement,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+              ),
+            ),
+          ],
           if (item.askingPrice != null) ...<Widget>[
             const SizedBox(height: 12),
             Text(
@@ -1611,6 +1789,12 @@ class ItemDetailScreen extends StatelessWidget {
               trailing: Text(formatCurrency(breakdown.sellerPayout)),
             ),
           ],
+          const SizedBox(height: 16),
+          _CommentsSection(
+            controller: controller,
+            item: item,
+            comments: comments,
+          ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 12,
@@ -1682,9 +1866,360 @@ class ItemDetailScreen extends StatelessWidget {
                 child: const Text('Report dispute'),
               ),
             ],
+            ),
+          ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ArtistProfileScreen extends StatelessWidget {
+  const ArtistProfileScreen({
+    required this.controller,
+    required this.artist,
+    super.key,
+  });
+
+  final CustomerController controller;
+  final Artist artist;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Artwork> works = controller.artworksForArtist(artist.id);
+    final List<UniqueItem> items = controller.itemsForArtist(artist.id);
+    final String? heroImage = items.isEmpty || items.first.imageUrls.isEmpty
+        ? null
+        : items.first.imageUrls.first;
+    return Scaffold(
+      appBar: AppBar(title: Text(artist.displayName)),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: <Widget>[
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: <Color>[Color(0xFF20170A), Color(0xFF0A0A0A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: OneOfOneTheme.gold.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Stack(
+              children: <Widget>[
+                SizedBox(
+                  height: 360,
+                  width: double.infinity,
+                  child: _EditorialImage(imageUrl: heroImage),
+                ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.08),
+                          Colors.black.withValues(alpha: 0.82),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        artist.displayName,
+                        style: Theme.of(context).textTheme.displaySmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _artistEditorialBio(artist, works.length, items.length),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: OneOfOneTheme.gold.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'Artist statement',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(artist.authenticityStatement),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: 16),
+          Text(
+            'Available works',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          if (items.isEmpty)
+            const Card(
+              child: ListTile(
+                title: Text('No published works available right now.'),
+              ),
+            ),
+          ...items.map((UniqueItem item) {
+            final Artwork? artwork = controller.artworkFor(item);
+            return Card(
+              child: ListTile(
+                onTap: () => _openItemDetail(context, controller, item.id),
+                title: Text(artwork?.title ?? item.productName),
+                subtitle: Text(
+                  artwork?.story ?? item.serialNumber,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _EditorialImage(
+                      imageUrl: item.imageUrls.isEmpty ? null : item.imageUrls.first,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
         ],
       ),
+    );
+  }
+}
+
+String _artistEditorialBio(Artist artist, int artworkCount, int itemCount) {
+  final String worksLabel = artworkCount == 1 ? 'work' : 'works';
+  final String piecesLabel = itemCount == 1 ? 'piece' : 'pieces';
+  return '${artist.displayName} is featured on One of One with '
+      '$artworkCount published $worksLabel and $itemCount collectible $piecesLabel. '
+      'Every release remains platform-verified and tied to the artist statement below.';
+}
+
+class _EditorialImage extends StatelessWidget {
+  const _EditorialImage({required this.imageUrl});
+
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl == null || imageUrl!.isEmpty) {
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: <Color>[Color(0xFF2A2112), Color(0xFF0F0F0F)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Center(
+          child: Text('Editorial image coming soon'),
+        ),
+      );
+    }
+
+    return Image.network(
+      imageUrl!,
+      fit: BoxFit.cover,
+      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+        return const Center(child: Text('Image unavailable'));
+      },
+    );
+  }
+}
+
+class _InteractiveCollectiblePreview extends StatefulWidget {
+  const _InteractiveCollectiblePreview({required this.item});
+
+  final UniqueItem item;
+
+  @override
+  State<_InteractiveCollectiblePreview> createState() =>
+      _InteractiveCollectiblePreviewState();
+}
+
+class _InteractiveCollectiblePreviewState
+    extends State<_InteractiveCollectiblePreview> {
+  double _rotationX = 0;
+  double _rotationY = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onPanUpdate: (DragUpdateDetails details) {
+        setState(() {
+          _rotationY += details.delta.dx * 0.01;
+          _rotationX -= details.delta.dy * 0.01;
+        });
+      },
+      onDoubleTap: () {
+        setState(() {
+          _rotationX = 0;
+          _rotationY = 0;
+        });
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF191919),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: OneOfOneTheme.gold.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Stack(
+          children: <Widget>[
+            Center(
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateX(_rotationX)
+                  ..rotateY(_rotationY),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: SizedBox(
+                    width: 220,
+                    height: 280,
+                    child: _EditorialImage(
+                      imageUrl: widget.item.imageUrls.isEmpty
+                          ? null
+                          : widget.item.imageUrls.first,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 16,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Text(
+                  'Drag to inspect the collectible in a 3D-style preview. Double-tap to reset.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CommentsSection extends StatefulWidget {
+  const _CommentsSection({
+    required this.controller,
+    required this.item,
+    required this.comments,
+  });
+
+  final CustomerController controller;
+  final UniqueItem item;
+  final List<ItemComment> comments;
+
+  @override
+  State<_CommentsSection> createState() => _CommentsSectionState();
+}
+
+class _CommentsSectionState extends State<_CommentsSection> {
+  final TextEditingController _commentController = TextEditingController();
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Collector conversation',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _commentController,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Share your thoughts on this collectible',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton(
+            onPressed: () async {
+              final String message = await widget.controller.addComment(
+                itemId: widget.item.id,
+                body: _commentController.text,
+              );
+              if (!context.mounted) {
+                return;
+              }
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(message)));
+              if (message.startsWith('Comment posted')) {
+                _commentController.clear();
+              }
+            },
+            child: const Text('Post comment'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (widget.comments.isEmpty)
+          const Card(
+            child: ListTile(
+              title: Text('No comments yet.'),
+              subtitle: Text('Start the conversation around this release.'),
+            ),
+          ),
+        ...widget.comments.map(
+          (ItemComment comment) => Card(
+            child: ListTile(
+              title: Text(comment.userDisplayName),
+              subtitle: Text(comment.body),
+              trailing: Text(comment.createdAt.toIso8601String().split('T').first),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2022,12 +2557,13 @@ class VaultScreen extends StatelessWidget {
               ),
             ),
           ),
-          ...controller.savedItems.map(
-            (UniqueItem item) => Card(
-              child: ListTile(
-                title: Text(item.productName),
-                subtitle: Text(item.serialNumber),
-                trailing: const Icon(Icons.bookmark),
+        ...controller.savedItems.map(
+          (UniqueItem item) => Card(
+            child: ListTile(
+              onTap: () => _openItemDetail(context, controller, item.id),
+              title: Text(item.productName),
+              subtitle: Text(item.serialNumber),
+              trailing: const Icon(Icons.bookmark),
               ),
             ),
           ),
@@ -2044,12 +2580,40 @@ class VaultScreen extends StatelessWidget {
           ),
         ...controller.vaultItems.map(
           (UniqueItem item) => Card(
-            child: ListTile(
-              title: Text(item.productName),
-              subtitle: Text(
-                'Certificate active - ${item.state.key.replaceAll('_', ' ')}',
-              ),
-              trailing: Text(item.serialNumber),
+            child: Column(
+              children: <Widget>[
+                ListTile(
+                  onTap: () => _openItemDetail(context, controller, item.id),
+                  title: Text(item.productName),
+                  subtitle: Text(
+                    'Certificate active - ${item.state.key.replaceAll('_', ' ')}',
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          item.serialNumber,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      if (item.currentOwnerUserId == controller.currentUserId &&
+                          !item.state.isRestricted)
+                        FilledButton.tonal(
+                          onPressed: () => _openItemDetail(
+                            context,
+                            controller,
+                            item.id,
+                          ),
+                          child: const Text('Open & resell'),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),

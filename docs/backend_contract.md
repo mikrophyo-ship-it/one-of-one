@@ -24,6 +24,8 @@ After a real Auth signup, call:
 Owner-safe authenticated reads:
 - `public.get_my_collectibles()`
 - `public.get_my_item_history(item_id)`
+- `public.get_public_item_comments()`
+- `public.get_public_item_comments()`
 
 For ownership and resale lifecycle:
 - `public.claim_item_ownership(item_id, claim_code)`
@@ -45,6 +47,8 @@ For ownership and resale lifecycle:
 - `public.remove_saved_collectible(item_id)`
 - `public.get_my_notifications()`
 - `public.open_dispute(item_id, reason, details, freeze_item)`
+- `public.add_item_comment(item_id, body)`
+- `public.add_item_comment(item_id, body)`
 
 ## Authenticated admin RPCs
 Mutation RPCs:
@@ -60,6 +64,8 @@ Mutation RPCs:
 - `public.admin_upsert_inventory_item(item_id, artist_id, artwork_id, garment_product_id, serial_number, item_state)`
 - `public.admin_create_item_authenticity_record(item_id, authenticity_status, public_story, visibility_label)`
 - `public.admin_upsert_item_listing(item_id, asking_price_cents, status)`
+- `public.admin_attach_item_media_asset(item_id, storage_bucket, storage_path, media_type, visibility)`
+- `public.admin_attach_item_media_asset(item_id, storage_bucket, storage_path, media_type, visibility)`
 
 Read RPCs:
 - `public.get_admin_dashboard_overview()`
@@ -106,15 +112,19 @@ Repeated or delayed provider events update the same refund/payment records idemp
 19. Admin can operationally publish new inventory by first creating the linked authenticity record through `admin_create_item_authenticity_record(...)`, then creating or publishing the listing through `admin_upsert_item_listing(...)`.
 This makes the item eligible for `public.public_collectible_catalog`, and if the listing is active with price it unlocks the customer checkout path.
 20. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
+21. Public editorial images for collectibles are attached by admin through `admin_attach_item_media_asset(...)`, and customer-visible comments are read through `get_public_item_comments()` and written through `add_item_comment(...)`.
+These public surfaces stay privacy-safe and do not expose hidden claim data.
+21. Public editorial images for collectibles are attached by admin through `admin_attach_item_media_asset(...)`, and customer-visible comments are read through `get_public_item_comments()` and written through `add_item_comment(...)`.
+These public surfaces stay privacy-safe and do not expose hidden claim data.
 
 ## Local development flow
-1. Apply migrations through `0010_stripe_checkout_reconciliation.sql` and `supabase/seed/seed.sql`.
+1. Apply migrations through `0017_item_media_and_comments.sql` and `supabase/seed/seed.sql`.
 2. Create local users through Supabase Auth UI or app sign-up.
 3. Sign in as each user and call `upsert_my_profile(...)`.
 4. Promote one account to admin through a bootstrap admin path, then use `admin_set_user_role(...)` for later role changes.
 5. Use the seeded `sold_unclaimed` items and their packaged hidden codes for claim testing.
 6. Deploy `stripe-create-checkout-session` and `stripe-webhook` with environment-specific Stripe secrets and return URLs.
-7. Drive authenticity lookup, claim, listing, checkout, payment authorization, shipment, delivery confirmation, refund, dispute, moderation, and settings flows through RPCs, edge functions, and views rather than direct table writes.
+7. Drive authenticity lookup, claim, listing, checkout, payment authorization, shipment, delivery confirmation, refund, dispute, editorial media attachment, customer comments, moderation, and settings flows through RPCs, edge functions, and views rather than direct table writes.
 
 ## Seed notes
 `supabase/seed/seed.sql` seeds collectible catalog and authenticity data only. It intentionally does not insert into `auth.users`.
@@ -123,8 +133,10 @@ This makes the item eligible for `public.public_collectible_catalog`, and if the
 - The customer app now uses real Supabase Auth session state plus Supabase-backed reads and RPCs through its repository and service architecture.
 - It resolves QR and public authenticity through `get_public_authenticity_by_qr_token(...)` and keeps claim codes out of public authenticity views.
 - It starts hosted Stripe checkout through the Supabase edge function rather than pretending client-side authorization completed locally.
+- It now reads public collectible editorial images and public comments without exposing hidden claim data, and authenticated collectors can add comments through `add_item_comment(...)`.
 - The admin app now uses Supabase-backed operational reads plus admin RPCs for disputes, listing moderation, customer roles, audit viewing, freeze controls, and persisted settings.
 - The admin app inventory workflow now includes row-level actions to create the required authenticity record and create or publish a listing so newly created items become customer-visible and buyable without manual SQL.
+- The admin catalog workflow can now attach public editorial item imagery through storage plus `admin_attach_item_media_asset(...)`.
 
 ## Remaining app integration work
 - Add camera-based QR scanning package wiring for device hardware capture and printable QR export polish.

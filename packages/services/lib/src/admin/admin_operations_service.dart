@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
 
@@ -131,6 +133,20 @@ class AdminOperationsService {
       itemId: itemId,
       askingPriceCents: askingPriceCents,
       status: status,
+    );
+  }
+
+  Future<MarketplaceActionResult<void>> uploadInventoryImage({
+    required String itemId,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  }) {
+    return _repository.uploadInventoryImage(
+      itemId: itemId,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
     );
   }
 
