@@ -55,6 +55,16 @@ abstract class AdminOperationsRepository {
     required String itemState,
   });
 
+  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
+    required String itemId,
+  });
+
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryListing({
+    required String itemId,
+    required int askingPriceCents,
+    required String status,
+  });
+
   Future<MarketplaceActionResult<void>> flagItemStatus({
     required String itemId,
     required String targetState,

@@ -221,6 +221,13 @@ class AdminInventoryRecord {
     required this.garmentName,
     required this.itemState,
     required this.ownerDisplayLabel,
+    required this.hasAuthenticityRecord,
+    required this.authenticityStatus,
+    required this.listingId,
+    required this.listingStatus,
+    required this.askingPriceCents,
+    required this.customerVisible,
+    required this.buyable,
   });
 
   final String itemId;
@@ -230,6 +237,13 @@ class AdminInventoryRecord {
   final String garmentName;
   final String itemState;
   final String ownerDisplayLabel;
+  final bool hasAuthenticityRecord;
+  final String? authenticityStatus;
+  final String? listingId;
+  final String? listingStatus;
+  final int? askingPriceCents;
+  final bool customerVisible;
+  final bool buyable;
 }
 
 class AdminGarmentProductRecord {

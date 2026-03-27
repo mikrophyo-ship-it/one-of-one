@@ -47,6 +47,28 @@ void main() {
       expect(find.text('Operational overview'), findsOneWidget);
       expect(find.text('Marketplace guardrails'), findsOneWidget);
 
+      await _tapRailLabel(tester, 'Catalog');
+      expect(find.text('OOO-NEW-0002'), findsOneWidget);
+      await _tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'Link Authenticity').first,
+      );
+      expect(
+        find.text('Authenticity record linked to inventory item.'),
+        findsOneWidget,
+      );
+      expect(find.text('verified_human_made'), findsWidgets);
+
+      await _tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'Create Listing').first,
+      );
+      await _enterField(tester, 'Asking price (cents)', '210000');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create listing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Listing published for sale.'), findsOneWidget);
+      expect(find.text('active'), findsWidgets);
+
       await _tapRailLabel(tester, 'Customers');
       expect(find.text('Avery Collector'), findsOneWidget);
       await tester.tap(find.text('customer').first);
@@ -58,8 +80,10 @@ void main() {
 
       await _tapRailLabel(tester, 'Listings');
       expect(find.text('OOO-AG-0001'), findsOneWidget);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Block').first);
-      await tester.pumpAndSettle();
+      await _tapVisible(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Block').first,
+      );
       await _enterField(
         tester,
         'Add an internal moderation note',
@@ -110,6 +134,8 @@ void main() {
       expect(find.text('1250'), findsOneWidget);
 
       await _tapRailLabel(tester, 'Audit');
+      expect(find.text('admin_create_item_authenticity_record'), findsOneWidget);
+      expect(find.text('admin_upsert_item_listing'), findsOneWidget);
       expect(find.text('set_user_role'), findsOneWidget);
       expect(find.text('moderate_listing'), findsOneWidget);
       expect(find.text('flag_item_status'), findsWidgets);
@@ -377,7 +403,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         royaltyBps: 1200,
         isActive: true,
         artworkCount: 1,
-        inventoryCount: 1,
+        inventoryCount: 2,
       ),
     ];
     _artworks = <AdminArtworkRecord>[
@@ -387,7 +413,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         artistName: 'Maya Vale',
         title: 'Afterglow No. 01',
         creationDate: DateTime(2026, 3, 1),
-        inventoryCount: 1,
+        inventoryCount: 2,
       ),
     ];
     _inventory = <AdminInventoryRecord>[
@@ -399,6 +425,29 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         garmentName: 'Collector Tee',
         itemState: 'claimed',
         ownerDisplayLabel: 'Avery Collector',
+        hasAuthenticityRecord: true,
+        authenticityStatus: 'verified_human_made',
+        listingId: 'listing_1',
+        listingStatus: 'active',
+        askingPriceCents: 180000,
+        customerVisible: true,
+        buyable: true,
+      ),
+      const AdminInventoryRecord(
+        itemId: 'item_2',
+        serialNumber: 'OOO-NEW-0002',
+        artistName: 'Maya Vale',
+        artworkTitle: 'Afterglow No. 01',
+        garmentName: 'Collector Tee',
+        itemState: 'in_inventory',
+        ownerDisplayLabel: 'Unassigned',
+        hasAuthenticityRecord: false,
+        authenticityStatus: null,
+        listingId: null,
+        listingStatus: null,
+        askingPriceCents: null,
+        customerVisible: false,
+        buyable: false,
       ),
     ];
     _garmentProducts = <AdminGarmentProductRecord>[
@@ -692,6 +741,132 @@ class _FakeAdminRepository implements AdminOperationsRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
+    required String itemId,
+  }) async {
+    final int index = _inventory.indexWhere(
+      (AdminInventoryRecord item) => item.itemId == itemId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: 'Inventory item not found.',
+      );
+    }
+
+    final AdminInventoryRecord current = _inventory[index];
+    _inventory[index] = AdminInventoryRecord(
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      artistName: current.artistName,
+      artworkTitle: current.artworkTitle,
+      garmentName: current.garmentName,
+      itemState: current.itemState,
+      ownerDisplayLabel: current.ownerDisplayLabel,
+      hasAuthenticityRecord: true,
+      authenticityStatus: 'verified_human_made',
+      listingId: current.listingId,
+      listingStatus: current.listingStatus,
+      askingPriceCents: current.askingPriceCents,
+      customerVisible: true,
+      buyable: current.buyable,
+    );
+    _addAudit(
+      action: 'admin_create_item_authenticity_record',
+      entityType: 'authenticity_record',
+      entityId: itemId,
+      payload: <String, dynamic>{'item_id': itemId},
+    );
+    _rebuildSnapshot();
+    return MarketplaceActionResult<AdminInventoryRecord>(
+      success: true,
+      message: 'Authenticity record linked to inventory item.',
+      data: _inventory[index],
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryListing({
+    required String itemId,
+    required int askingPriceCents,
+    required String status,
+  }) async {
+    final int index = _inventory.indexWhere(
+      (AdminInventoryRecord item) => item.itemId == itemId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: 'Inventory item not found.',
+      );
+    }
+
+    final AdminInventoryRecord current = _inventory[index];
+    final String listingId = current.listingId ?? 'listing_${_listings.length + 1}';
+    _inventory[index] = AdminInventoryRecord(
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      artistName: current.artistName,
+      artworkTitle: current.artworkTitle,
+      garmentName: current.garmentName,
+      itemState: status == 'active' ? 'listed_for_resale' : current.itemState,
+      ownerDisplayLabel: current.ownerDisplayLabel == 'Unassigned'
+          ? 'Admin Operator'
+          : current.ownerDisplayLabel,
+      hasAuthenticityRecord: current.hasAuthenticityRecord,
+      authenticityStatus: current.authenticityStatus,
+      listingId: listingId,
+      listingStatus: status,
+      askingPriceCents: askingPriceCents,
+      customerVisible: current.customerVisible,
+      buyable: current.hasAuthenticityRecord && status == 'active',
+    );
+
+    final int listingIndex = _listings.indexWhere(
+      (AdminListingRecord listing) => listing.itemId == itemId,
+    );
+    final AdminListingRecord nextListing = AdminListingRecord(
+      listingId: listingId,
+      itemId: itemId,
+      sellerUserId: 'admin_1',
+      listingStatus: status,
+      askingPriceCents: askingPriceCents,
+      createdAt: DateTime(2026, 3, 27),
+      serialNumber: current.serialNumber,
+      itemState: status == 'active' ? 'listed_for_resale' : current.itemState,
+      garmentName: current.garmentName,
+      artworkTitle: current.artworkTitle,
+      artistName: current.artistName,
+      sellerDisplayName: 'Admin Operator',
+      sellerUsername: 'adminoperator',
+    );
+    if (listingIndex == -1) {
+      _listings = <AdminListingRecord>[nextListing, ..._listings];
+    } else {
+      _listings[listingIndex] = nextListing;
+    }
+
+    _addAudit(
+      action: 'admin_upsert_item_listing',
+      entityType: 'listing',
+      entityId: listingId,
+      payload: <String, dynamic>{
+        'item_id': itemId,
+        'asking_price_cents': askingPriceCents,
+        'status': status,
+      },
+    );
+    _rebuildSnapshot();
+    return MarketplaceActionResult<AdminInventoryRecord>(
+      success: true,
+      message: status == 'active'
+          ? 'Listing published for sale.'
+          : 'Listing saved.',
+      data: _inventory[index],
+    );
+  }
+
+  @override
   Future<MarketplaceActionResult<void>> flagItemStatus({
     required String itemId,
     required String targetState,
@@ -729,6 +904,13 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         garmentName: item.garmentName,
         itemState: targetState,
         ownerDisplayLabel: item.ownerDisplayLabel,
+        hasAuthenticityRecord: item.hasAuthenticityRecord,
+        authenticityStatus: item.authenticityStatus,
+        listingId: item.listingId,
+        listingStatus: item.listingStatus,
+        askingPriceCents: item.askingPriceCents,
+        customerVisible: item.customerVisible,
+        buyable: item.buyable && targetState != 'frozen',
       );
     }).toList();
     _disputes = _disputes.map((AdminDisputeRecord dispute) {

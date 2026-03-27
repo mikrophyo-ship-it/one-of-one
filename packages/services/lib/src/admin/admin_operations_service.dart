@@ -116,6 +116,24 @@ class AdminOperationsService {
     );
   }
 
+  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
+    required String itemId,
+  }) {
+    return _repository.createAuthenticityRecord(itemId: itemId);
+  }
+
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryListing({
+    required String itemId,
+    required int askingPriceCents,
+    required String status,
+  }) {
+    return _repository.upsertInventoryListing(
+      itemId: itemId,
+      askingPriceCents: askingPriceCents,
+      status: status,
+    );
+  }
+
   Future<MarketplaceActionResult<void>> flagItemStatus({
     required String itemId,
     required String targetState,

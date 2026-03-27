@@ -364,6 +364,76 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
+    required String itemId,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'admin_create_item_authenticity_record',
+        params: <String, dynamic>{'p_item_id': itemId},
+      );
+      await refresh();
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: true,
+        message: 'Authenticity record linked to inventory item.',
+        data: _findInventory(itemId, ''),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryListing({
+    required String itemId,
+    required int askingPriceCents,
+    required String status,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'admin_upsert_item_listing',
+        params: <String, dynamic>{
+          'p_item_id': itemId,
+          'p_asking_price_cents': askingPriceCents,
+          'p_status': status,
+        },
+      );
+      await refresh();
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: true,
+        message: status == 'active'
+            ? 'Listing published for sale.'
+            : 'Listing saved.',
+        data: _findInventory(itemId, ''),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminInventoryRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
   Future<MarketplaceActionResult<PlatformSettingsSnapshot>> updateSettings({
     required int platformFeeBps,
     required int defaultRoyaltyBps,
@@ -615,6 +685,15 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       garmentName: row['garment_name'].toString(),
       itemState: row['item_state'].toString(),
       ownerDisplayLabel: row['owner_display_label'].toString(),
+      hasAuthenticityRecord: row['has_authenticity_record'] == true,
+      authenticityStatus: _nullableString(row['authenticity_status']),
+      listingId: _nullableString(row['listing_id']),
+      listingStatus: _nullableString(row['listing_status']),
+      askingPriceCents: row['asking_price_cents'] == null
+          ? null
+          : _toInt(row['asking_price_cents']),
+      customerVisible: row['customer_visible'] == true,
+      buyable: row['buyable'] == true,
     );
   }
 
@@ -749,6 +828,24 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       'JSON object requested, multiple (or no) rows returned',
     )) {
       return 'This account does not have admin console access.';
+    }
+    if (message.contains('Authenticity record already exists')) {
+      return 'This item already has a linked authenticity record.';
+    }
+    if (message.contains('Listing price must be greater than zero')) {
+      return 'Enter a listing price greater than zero.';
+    }
+    if (message.contains('Restricted items cannot be listed')) {
+      return 'Disputed, frozen, stolen, or archived items cannot be listed.';
+    }
+    if (message.contains('Listing already exists for this item')) {
+      return 'This item already has an operational listing record.';
+    }
+    if (message.contains('Create authenticity record first')) {
+      return 'Create the item authenticity record before publishing it to customers.';
+    }
+    if (message.contains('Unsupported listing status')) {
+      return 'Use draft or active when saving an operational listing.';
     }
     return message;
   }

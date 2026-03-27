@@ -13,6 +13,8 @@ class CatalogPanel extends StatelessWidget {
     required this.onCreateArtist,
     required this.onCreateArtwork,
     required this.onCreateInventory,
+    required this.onCreateAuthenticityRecord,
+    required this.onUpsertListing,
     super.key,
   });
 
@@ -23,6 +25,8 @@ class CatalogPanel extends StatelessWidget {
   final VoidCallback onCreateArtist;
   final VoidCallback onCreateArtwork;
   final VoidCallback onCreateInventory;
+  final Future<void> Function(AdminInventoryRecord item) onCreateAuthenticityRecord;
+  final Future<void> Function(AdminInventoryRecord item) onUpsertListing;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +69,8 @@ class CatalogPanel extends StatelessWidget {
               : SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
+                    dataRowMinHeight: 72,
+                    dataRowMaxHeight: 108,
                     columns: const <DataColumn>[
                       DataColumn(label: Text('Artist')),
                       DataColumn(label: Text('Slug')),
@@ -161,27 +167,126 @@ class CatalogPanel extends StatelessWidget {
           title: 'Inventory',
           child: inventory.isEmpty
               ? const EmptyState(message: 'No inventory available.')
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columns: const <DataColumn>[
-                      DataColumn(label: Text('Serial')),
-                      DataColumn(label: Text('Artist / work')),
-                      DataColumn(label: Text('Garment')),
-                      DataColumn(label: Text('State')),
-                      DataColumn(label: Text('Owner')),
-                    ],
-                    rows: inventory.map((AdminInventoryRecord item) {
-                      return DataRow(
-                        cells: <DataCell>[
-                          DataCell(Text(item.serialNumber)),
-                          DataCell(Text('${item.artistName} / ${item.artworkTitle}')),
-                          DataCell(Text(item.garmentName)),
-                          DataCell(StatusPill(label: item.itemState)),
-                          DataCell(Text(item.ownerDisplayLabel)),
-                        ],
-                      );
-                    }).toList(),
+              : Scrollbar(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      horizontalMargin: 12,
+                      columnSpacing: 16,
+                      dataRowMinHeight: 64,
+                      dataRowMaxHeight: 96,
+                      columns: const <DataColumn>[
+                        DataColumn(label: Text('Serial')),
+                        DataColumn(label: Text('Artist / work')),
+                        DataColumn(label: Text('Garment')),
+                        DataColumn(label: Text('State')),
+                        DataColumn(label: Text('Owner')),
+                        DataColumn(label: Text('Auth')),
+                        DataColumn(label: Text('Listing')),
+                        DataColumn(label: Text('Price')),
+                        DataColumn(label: Text('Visible')),
+                        DataColumn(label: Text('Buy')),
+                        DataColumn(label: Text('Actions')),
+                      ],
+                      rows: inventory.map((AdminInventoryRecord item) {
+                        return DataRow(
+                          cells: <DataCell>[
+                            DataCell(Text(item.serialNumber)),
+                            DataCell(
+                              SizedBox(
+                                width: 180,
+                                child: Text(
+                                  '${item.artistName} / ${item.artworkTitle}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              SizedBox(
+                                width: 120,
+                                child: Text(
+                                  item.garmentName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(StatusPill(label: item.itemState)),
+                            DataCell(
+                              SizedBox(
+                                width: 120,
+                                child: Text(
+                                  item.ownerDisplayLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              StatusPill(
+                                label: item.hasAuthenticityRecord
+                                    ? (item.authenticityStatus ?? 'linked')
+                                    : 'missing',
+                              ),
+                            ),
+                            DataCell(
+                              item.listingStatus == null
+                                  ? const Text('None')
+                                  : StatusPill(label: item.listingStatus!),
+                            ),
+                            DataCell(
+                              Text(
+                                item.askingPriceCents == null
+                                    ? 'n/a'
+                                    : formatCurrency(item.askingPriceCents!),
+                              ),
+                            ),
+                            DataCell(
+                              StatusPill(
+                                label: item.customerVisible ? 'yes' : 'no',
+                              ),
+                            ),
+                            DataCell(
+                              StatusPill(label: item.buyable ? 'yes' : 'no'),
+                            ),
+                            DataCell(
+                              SizedBox(
+                                width: 160,
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: <Widget>[
+                                    if (!item.hasAuthenticityRecord)
+                                      FilledButton.tonal(
+                                        onPressed: () =>
+                                            onCreateAuthenticityRecord(item),
+                                        child: const Text('Link'),
+                                      ),
+                                    if (item.hasAuthenticityRecord &&
+                                        item.listingStatus == null)
+                                      FilledButton.tonal(
+                                        onPressed: () => onUpsertListing(item),
+                                        child: const Text('List'),
+                                      ),
+                                    if (item.hasAuthenticityRecord &&
+                                        item.listingStatus != null &&
+                                        item.listingStatus != 'active')
+                                      FilledButton.tonal(
+                                        onPressed: () => onUpsertListing(item),
+                                        child: const Text('Publish'),
+                                      ),
+                                    if (item.listingStatus == 'active')
+                                      const StatusPill(label: 'live'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
         ),

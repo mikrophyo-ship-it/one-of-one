@@ -58,6 +58,8 @@ Mutation RPCs:
 - `public.admin_upsert_artist(artist_id, display_name, slug, royalty_bps, authenticity_statement, is_active)`
 - `public.admin_upsert_artwork(artwork_id, artist_id, title, story, provenance_proof, creation_date)`
 - `public.admin_upsert_inventory_item(item_id, artist_id, artwork_id, garment_product_id, serial_number, item_state)`
+- `public.admin_create_item_authenticity_record(item_id, authenticity_status, public_story, visibility_label)`
+- `public.admin_upsert_item_listing(item_id, asking_price_cents, status)`
 
 Read RPCs:
 - `public.get_admin_dashboard_overview()`
@@ -101,7 +103,9 @@ This is the point where ownership finalizes on-platform.
 Repeated or delayed provider events update the same refund/payment records idempotently.
 17. If a customer reports a problem, `open_dispute(...)` moves the item into `disputed` or `frozen` and blocks listing and transfer.
 18. Admin can moderate listings through `admin_moderate_listing(...)`, resolve or reject disputes through `admin_update_dispute_status(...)`, force item restrictions like `stolen_flagged`, `frozen`, or safe release states through `admin_flag_item_status(...)`, and maintain artist/artwork/inventory records through the admin upsert RPCs.
-19. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
+19. Admin can operationally publish new inventory by first creating the linked authenticity record through `admin_create_item_authenticity_record(...)`, then creating or publishing the listing through `admin_upsert_item_listing(...)`.
+This makes the item eligible for `public.public_collectible_catalog`, and if the listing is active with price it unlocks the customer checkout path.
+20. Admin settings edits persist through `admin_update_platform_settings(...)`, and admin queue reads are returned only through the admin-checked read RPCs.
 
 ## Local development flow
 1. Apply migrations through `0010_stripe_checkout_reconciliation.sql` and `supabase/seed/seed.sql`.
@@ -120,6 +124,7 @@ Repeated or delayed provider events update the same refund/payment records idemp
 - It resolves QR and public authenticity through `get_public_authenticity_by_qr_token(...)` and keeps claim codes out of public authenticity views.
 - It starts hosted Stripe checkout through the Supabase edge function rather than pretending client-side authorization completed locally.
 - The admin app now uses Supabase-backed operational reads plus admin RPCs for disputes, listing moderation, customer roles, audit viewing, freeze controls, and persisted settings.
+- The admin app inventory workflow now includes row-level actions to create the required authenticity record and create or publish a listing so newly created items become customer-visible and buyable without manual SQL.
 
 ## Remaining app integration work
 - Add camera-based QR scanning package wiring for device hardware capture and printable QR export polish.

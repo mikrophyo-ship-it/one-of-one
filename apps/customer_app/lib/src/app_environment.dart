@@ -24,7 +24,11 @@ class AppEnvironment {
       return fromDefine.trim();
     }
 
-    final String fromEnv = dotenv.maybeGet(key)?.trim() ?? '';
-    return fromEnv;
+    try {
+      final String fromEnv = dotenv.maybeGet(key)?.trim() ?? '';
+      return fromEnv;
+    } catch (_) {
+      return '';
+    }
   }
 }

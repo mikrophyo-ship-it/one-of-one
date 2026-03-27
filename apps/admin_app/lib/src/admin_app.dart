@@ -201,6 +201,8 @@ class _AdminShellState extends State<AdminShell> {
         onCreateArtist: _createArtist,
         onCreateArtwork: _createArtwork,
         onCreateInventory: _createInventory,
+        onCreateAuthenticityRecord: _createAuthenticityRecord,
+        onUpsertListing: _upsertListing,
       ),
       AuditPanel(audits: _snapshot?.audits ?? const <AdminAuditRecord>[]),
       SettingsPanel(settings: _snapshot?.settings, onSave: _saveSettings),
@@ -561,6 +563,44 @@ class _AdminShellState extends State<AdminShell> {
     });
   }
 
+  Future<void> _createAuthenticityRecord(AdminInventoryRecord item) async {
+    final MarketplaceActionResult<AdminInventoryRecord> result =
+        await _adminService.createAuthenticityRecord(itemId: item.itemId);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _upsertListing(AdminInventoryRecord item) async {
+    final _InventoryListingInput? input = await promptForInventoryListing(
+      context,
+      item,
+    );
+    if (input == null) {
+      return;
+    }
+
+    final MarketplaceActionResult<AdminInventoryRecord> result =
+        await _adminService.upsertInventoryListing(
+          itemId: item.itemId,
+          askingPriceCents: input.askingPriceCents,
+          status: input.status,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
   Future<String?> _promptForNote({
     required String title,
     required String hint,
@@ -678,6 +718,16 @@ class _CatalogInventoryInput {
   final String garmentProductId;
   final String serialNumber;
   final String itemState;
+}
+
+class _InventoryListingInput {
+  const _InventoryListingInput({
+    required this.askingPriceCents,
+    required this.status,
+  });
+
+  final int askingPriceCents;
+  final String status;
 }
 
 class AdminSignInView extends StatelessWidget {
@@ -1128,6 +1178,92 @@ Future<_CatalogInventoryInput?> promptForInventory(
     },
   );
   serialNumber.dispose();
+  return value;
+}
+
+Future<_InventoryListingInput?> promptForInventoryListing(
+  BuildContext context,
+  AdminInventoryRecord item,
+) async {
+  String price = item.askingPriceCents == null ? '' : '${item.askingPriceCents}';
+  String status = item.listingStatus == null ? 'active' : item.listingStatus!;
+
+  final _InventoryListingInput? value = await showDialog<_InventoryListingInput>(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1712),
+            title: Text('Listing for ${item.serialNumber}'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    '${item.artistName} / ${item.artworkTitle}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    initialValue: price,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Asking price (cents)',
+                    ),
+                    onChanged: (String value) {
+                      price = value;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: status,
+                    decoration: const InputDecoration(
+                      labelText: 'Listing status',
+                    ),
+                    items: const <String>['draft', 'active']
+                        .map(
+                          (String value) => DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          status = value;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _InventoryListingInput(
+                    askingPriceCents: int.tryParse(price.trim()) ?? 0,
+                    status: status,
+                  ),
+                ),
+                child: Text(
+                  item.listingStatus == null ? 'Create listing' : 'Save listing',
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
   return value;
 }
 
