@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:utils/utils.dart';
 
+import 'app_environment.dart';
 import 'authenticity_link_source.dart';
 
 class OneOfOneCustomerApp extends StatelessWidget {
@@ -106,9 +107,7 @@ class _CustomerRootState extends State<CustomerRoot> {
   }
 
   MarketplaceRepository _defaultRepository() {
-    const String url = String.fromEnvironment('SUPABASE_URL');
-    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-    final String? configurationError = url.isEmpty || anonKey.isEmpty
+    final String? configurationError = !AppEnvironment.hasSupabaseConfig
         ? 'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.'
         : null;
 
@@ -119,9 +118,7 @@ class _CustomerRootState extends State<CustomerRoot> {
   }
 
   SupabaseAuthService _defaultAuthService() {
-    const String url = String.fromEnvironment('SUPABASE_URL');
-    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-    final String? configurationError = url.isEmpty || anonKey.isEmpty
+    final String? configurationError = !AppEnvironment.hasSupabaseConfig
         ? 'Supabase is not configured. Pass SUPABASE_URL and SUPABASE_ANON_KEY via dart-define.'
         : null;
 

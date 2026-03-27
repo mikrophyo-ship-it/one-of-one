@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'src/app_environment.dart';
 import 'src/customer_app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
   await _initializeSupabaseIfConfigured();
   runApp(const OneOfOneCustomerApp());
 }
 
 Future<void> _initializeSupabaseIfConfigured() async {
-  const String url = String.fromEnvironment('SUPABASE_URL');
-  const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-  if (url.isEmpty || anonKey.isEmpty) {
+  if (!AppEnvironment.hasSupabaseConfig) {
     return;
   }
 
   await Supabase.initialize(
-    url: url,
-    anonKey: anonKey,
+    url: AppEnvironment.supabaseUrl,
+    anonKey: AppEnvironment.supabaseAnonKey,
   );
 }
