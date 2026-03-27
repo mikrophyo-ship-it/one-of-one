@@ -10,6 +10,16 @@ class AuditPanel extends StatelessWidget {
 
   final List<AdminAuditRecord> audits;
 
+  String _formatEntityLabel(AdminAuditRecord audit) {
+    final String? entityId = audit.entityId;
+    if (entityId == null || entityId.isEmpty) {
+      return audit.entityType;
+    }
+
+    final int previewLength = entityId.length < 8 ? entityId.length : 8;
+    return '${audit.entityType} • ${entityId.substring(0, previewLength)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return TableSection(
@@ -39,11 +49,7 @@ class AuditPanel extends StatelessWidget {
                               'system',
                         ),
                       ),
-                      DataCell(
-                        Text(
-                          '${audit.entityType}${audit.entityId == null ? '' : ' • ${audit.entityId!.substring(0, 8)}'}',
-                        ),
-                      ),
+                      DataCell(Text(_formatEntityLabel(audit))),
                       DataCell(Text(audit.action)),
                       DataCell(
                         SizedBox(

@@ -66,10 +66,21 @@ class AdminAppBootstrap {
 }
 
 class AdminShell extends StatefulWidget {
-  const AdminShell({required this.client, this.configurationError, super.key});
+  const AdminShell({
+    this.client,
+    this.configurationError,
+    this.authService,
+    this.adminService,
+    super.key,
+  }) : assert(
+         client != null || (authService != null && adminService != null),
+         'Provide a Supabase client or both authService and adminService.',
+       );
 
-  final SupabaseClient client;
+  final SupabaseClient? client;
   final String? configurationError;
+  final SupabaseAuthService? authService;
+  final AdminOperationsService? adminService;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -106,16 +117,20 @@ class _AdminShellState extends State<AdminShell> {
   @override
   void initState() {
     super.initState();
-    _authService = SupabaseAuthService(
-      client: widget.client,
-      configurationError: widget.configurationError,
-    );
-    _adminService = AdminOperationsService(
-      repository: SupabaseAdminOperationsRepository(
-        client: widget.client,
-        configurationError: widget.configurationError,
-      ),
-    );
+    _authService =
+        widget.authService ??
+        SupabaseAuthService(
+          client: widget.client,
+          configurationError: widget.configurationError,
+        );
+    _adminService =
+        widget.adminService ??
+        AdminOperationsService(
+          repository: SupabaseAdminOperationsRepository(
+            client: widget.client,
+            configurationError: widget.configurationError,
+          ),
+        );
     _snapshot = _adminService.snapshot();
     _authSubscription = _authService.authStateChanges().listen((AuthState _) {
       if (!mounted) {
@@ -551,18 +566,20 @@ class _AdminShellState extends State<AdminShell> {
     required String hint,
     required String confirmLabel,
   }) async {
-    final TextEditingController controller = TextEditingController();
-    final String? value = await showDialog<String>(
+    String note = '';
+    final String? result = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1A1712),
           title: Text(title),
           content: TextField(
-            controller: controller,
             minLines: 3,
             maxLines: 5,
             decoration: InputDecoration(hintText: hint),
+            onChanged: (String nextValue) {
+              note = nextValue;
+            },
           ),
           actions: <Widget>[
             TextButton(
@@ -570,16 +587,14 @@ class _AdminShellState extends State<AdminShell> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () => Navigator.of(context).pop(note.trim()),
               child: Text(confirmLabel),
             ),
           ],
         );
       },
     );
-    controller.dispose();
-    return value;
+    return result;
   }
 }
 
@@ -1120,7 +1135,7 @@ Future<DisputeActionInput?> promptForDisputeAction(
   BuildContext context,
   AdminDisputeRecord dispute,
 ) async {
-  final TextEditingController controller = TextEditingController();
+  String note = '';
   String status = dispute.disputeStatus == 'open'
       ? 'under_review'
       : dispute.disputeStatus;
@@ -1213,13 +1228,15 @@ Future<DisputeActionInput?> promptForDisputeAction(
                   ],
                   const SizedBox(height: 12),
                   TextField(
-                    controller: controller,
                     minLines: 3,
                     maxLines: 5,
                     decoration: const InputDecoration(
                       labelText: 'Admin note',
                       hintText: 'Document the resolution rationale',
                     ),
+                    onChanged: (String value) {
+                      note = value;
+                    },
                   ),
                 ],
               ),
@@ -1234,7 +1251,7 @@ Future<DisputeActionInput?> promptForDisputeAction(
                   Navigator.of(context).pop(
                     DisputeActionInput(
                       status: status,
-                      note: controller.text.trim(),
+                      note: note.trim(),
                       releaseItem: releaseItem,
                       releaseTargetState: releaseItem
                           ? releaseTargetState
@@ -1250,6 +1267,5 @@ Future<DisputeActionInput?> promptForDisputeAction(
       );
     },
   );
-  controller.dispose();
   return value;
 }

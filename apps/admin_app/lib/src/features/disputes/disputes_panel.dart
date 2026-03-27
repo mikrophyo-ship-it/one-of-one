@@ -27,6 +27,8 @@ class DisputesPanel extends StatelessWidget {
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
+                dataRowMinHeight: 88,
+                dataRowMaxHeight: 120,
                 columns: const <DataColumn>[
                   DataColumn(label: Text('Item')),
                   DataColumn(label: Text('Reason')),
@@ -82,39 +84,42 @@ class DisputesPanel extends StatelessWidget {
                       DataCell(Text(dispute.latestListingStatus ?? 'none')),
                       DataCell(Text(formatAdminDate(dispute.createdAt))),
                       DataCell(
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: <Widget>[
-                            FilledButton.tonal(
-                              onPressed: () => onUpdateDispute(dispute),
-                              child: const Text('Update'),
-                            ),
-                            TextButton(
-                              onPressed: () => onFlagItem(
-                                dispute.itemId,
-                                'frozen',
-                                'Freeze item',
+                        SizedBox(
+                          width: 320,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              FilledButton.tonal(
+                                onPressed: () => onUpdateDispute(dispute),
+                                child: const Text('Update'),
                               ),
-                              child: const Text('Freeze'),
-                            ),
-                            TextButton(
-                              onPressed: () => onFlagItem(
-                                dispute.itemId,
-                                'stolen_flagged',
-                                'Flag stolen item',
+                              TextButton(
+                                onPressed: () => onFlagItem(
+                                  dispute.itemId,
+                                  'frozen',
+                                  'Freeze item',
+                                ),
+                                child: const Text('Freeze'),
                               ),
-                              child: const Text('Flag stolen'),
-                            ),
-                            TextButton(
-                              onPressed: () => onFlagItem(
-                                dispute.itemId,
-                                'claimed',
-                                'Release to claimed state',
+                              TextButton(
+                                onPressed: () => onFlagItem(
+                                  dispute.itemId,
+                                  'stolen_flagged',
+                                  'Flag stolen item',
+                                ),
+                                child: const Text('Flag stolen'),
                               ),
-                              child: const Text('Release'),
-                            ),
-                          ],
+                              TextButton(
+                                onPressed: () => onFlagItem(
+                                  dispute.itemId,
+                                  'claimed',
+                                  'Release to claimed state',
+                                ),
+                                child: const Text('Release'),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
