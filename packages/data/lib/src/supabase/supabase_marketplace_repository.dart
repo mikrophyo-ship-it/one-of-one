@@ -620,9 +620,6 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
         )
         .eq('linked_entity_type', 'unique_item')
         .eq('visibility', 'public');
-    final List<dynamic> commentRows = await _client!
-        .rpc('get_public_item_comments') as List<dynamic>;
-
     List<dynamic> myCollectibleRows = <dynamic>[];
     List<dynamic> savedItemRows = <dynamic>[];
     List<dynamic> notificationRows = <dynamic>[];
@@ -675,9 +672,18 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     }
     final Map<String, List<ItemComment>> commentsByItemId =
         <String, List<ItemComment>>{};
-    for (final dynamic row in commentRows) {
-      final ItemComment comment = _itemCommentFromRow(row as Map<String, dynamic>);
-      commentsByItemId.putIfAbsent(comment.itemId, () => <ItemComment>[]).add(comment);
+    for (final String itemId in mergedItems.keys) {
+      final List<dynamic> commentRows =
+          (await _client!.rpc(
+                'get_public_item_comments',
+                params: <String, dynamic>{'p_item_id': itemId},
+              ))
+              as List<dynamic>;
+      commentsByItemId[itemId] = commentRows
+          .map(
+            (dynamic row) => _itemCommentFromRow(row as Map<String, dynamic>),
+          )
+          .toList();
     }
     for (final dynamic row in myCollectibleRows) {
       final Map<String, dynamic> map = row as Map<String, dynamic>;
