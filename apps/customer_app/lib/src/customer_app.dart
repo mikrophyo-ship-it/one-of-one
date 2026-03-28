@@ -371,7 +371,7 @@ class _LuxuryBottomDock extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF111111),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.24),
@@ -5027,26 +5027,62 @@ class _ScanScreenState extends State<ScanScreen> {
     final PublicAuthenticityRecord? result =
         widget.controller.scannedAuthenticity;
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: <Widget>[
-        Card(
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(22),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Scan authenticity QR',
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  'AUTHENTICITY',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: OneOfOneTheme.gold,
+                    letterSpacing: 2.2,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Use the camera-ready public token or paste a deep-link token to resolve privacy-safe authenticity details from Supabase. Hidden claim codes stay separate from the public authenticity route.',
+                const SizedBox(height: 10),
+                Text(
+                  'Scan authenticity QR',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: const Color(0xFFF4EEDF),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Resolve a public verification token, inspect ownership-safe authenticity details, and continue only with packaged private claim material.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFFBCB3A6),
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: const <Widget>[
+                    _HeroMetaChip(label: 'Verified route'),
+                    _HeroMetaChip(label: 'Claim code stays private'),
+                  ],
+                ),
+                const SizedBox(height: 18),
                 if (widget.enableCameraScanner && !kIsWeb) ...<Widget>[
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     child: AspectRatio(
                       aspectRatio: 1,
                       child: Stack(
@@ -5058,26 +5094,53 @@ class _ScanScreenState extends State<ScanScreen> {
                           ),
                           DecoratedBox(
                             decoration: BoxDecoration(
-                              border: Border.all(
-                                color: OneOfOneTheme.gold.withValues(
-                                  alpha: 0.65,
-                                ),
-                                width: 2,
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: <Color>[
+                                  Colors.black.withValues(alpha: 0.1),
+                                  Colors.black.withValues(alpha: 0.2),
+                                  Colors.black.withValues(alpha: 0.55),
+                                ],
                               ),
-                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 188,
+                              height: 188,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(28),
+                                border: Border.all(
+                                  color: OneOfOneTheme.gold.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                  width: 2,
+                                ),
+                              ),
                             ),
                           ),
                           Align(
                             alignment: Alignment.bottomCenter,
                             child: Container(
                               margin: const EdgeInsets.all(16),
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.65),
-                                borderRadius: BorderRadius.circular(16),
+                                color: Colors.black.withValues(alpha: 0.62),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                ),
                               ),
-                              child: const Text(
+                              child: Text(
                                 'Point the camera at a One of One authenticity QR to open the public authenticity record.',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: const Color(0xFFE8DECD),
+                                      height: 1.4,
+                                    ),
                               ),
                             ),
                           ),
@@ -5085,21 +5148,31 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                 ],
-                TextField(
-                  controller: _qrTokenController,
-                  decoration: const InputDecoration(
-                    labelText: 'QR token',
-                    helperText:
-                        'Accepts the token encoded in the QR or a public deep-link query value.',
+                _LuxuryTextField(
+                  child: TextField(
+                    controller: _qrTokenController,
+                    decoration: const InputDecoration(
+                      labelText: 'QR token',
+                      helperText:
+                          'Accepts the token encoded in the QR or a public deep-link query value.',
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: _verifyManualInput,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE0C88A),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
                     child: const Text('Verify authenticity'),
                   ),
                 ),
@@ -5108,70 +5181,167 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
         if (widget.controller.statusMessage != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.verified_outlined),
-              title: Text(widget.controller.statusMessage!),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF151515),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            ),
+            child: Row(
+              children: <Widget>[
+                Icon(Icons.verified_outlined, color: OneOfOneTheme.gold),
+                const SizedBox(width: 12),
+                Expanded(child: Text(widget.controller.statusMessage!)),
+              ],
             ),
           ),
         ],
         if (widget.controller.errorMessage != null) ...<Widget>[
           const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.error_outline),
-              title: Text(widget.controller.errorMessage!),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF151515),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            ),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.error_outline,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(widget.controller.errorMessage!)),
+              ],
             ),
           ),
         ],
         if (result != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Card(
+          const SizedBox(height: 18),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF151515),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    result.serialNumber,
-                    style: Theme.of(context).textTheme.displaySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(result.artworkTitle),
-                  Text(result.artistName),
-                  Text(
-                    'Marketplace status: ${result.state.key.replaceAll('_', ' ')}',
-                  ),
-                  const SizedBox(height: 8),
-                  Text(result.ownershipVisibility),
-                  Text('${result.verifiedTransferCount} verified transfer(s)'),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _claimCodeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Enter hidden claim code',
-                      helperText:
-                          'This is packaged separately and never appears in the public authenticity result.',
+                    'Authenticity verified',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: OneOfOneTheme.gold,
+                      letterSpacing: 1.8,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final String message = await widget.controller
-                            .claimScannedItem(
-                              claimCode: _claimCodeController.text,
-                            );
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text(message)));
-                        }
-                        _claimCodeController.clear();
-                      },
-                      child: const Text('Claim ownership'),
+                  const SizedBox(height: 10),
+                  Text(
+                    result.serialNumber,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: const Color(0xFFF4EEDF),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    result.artworkTitle,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: const Color(0xFFF1EADB),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    result.artistName,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: const Color(0xFFD7C79B),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      _LuxuryInfoChip(
+                        label: result.state.key.replaceAll('_', ' '),
+                      ),
+                      _LuxuryInfoChip(label: result.ownershipVisibility),
+                      _LuxuryInfoChip(
+                        label:
+                            '${result.verifiedTransferCount} verified transfer(s)',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Private claim continuation',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: const Color(0xFFF3ECDE),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Enter hidden claim code',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(color: const Color(0xFFD9CFBA)),
+                        ),
+                        const SizedBox(height: 10),
+                        _LuxuryTextField(
+                          child: TextField(
+                            controller: _claimCodeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Enter hidden claim code',
+                              helperText:
+                                  'This is packaged separately and never appears in the public authenticity result.',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final String message = await widget.controller
+                                  .claimScannedItem(
+                                    claimCode: _claimCodeController.text,
+                                  );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(message)),
+                                );
+                              }
+                              _claimCodeController.clear();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE0C88A),
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            child: const Text('Claim ownership'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
