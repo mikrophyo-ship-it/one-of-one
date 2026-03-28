@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:domain/domain.dart';
 
 import '../repositories/marketplace_repository.dart';
@@ -122,6 +124,8 @@ class DemoCatalog implements MarketplaceRepository {
   late final List<OwnershipRecord> _ownershipRecords;
   final List<SavedCollectible> _savedItems = <SavedCollectible>[];
   final List<CollectorNotification> _notifications = <CollectorNotification>[];
+  final Map<String, ManualPaymentOrder> _manualPaymentOrdersByItemId =
+      <String, ManualPaymentOrder>{};
   final List<ItemComment> _comments = <ItemComment>[
     ItemComment(
       id: 'comment_1',
@@ -141,6 +145,10 @@ class DemoCatalog implements MarketplaceRepository {
   List<ItemComment> commentsForItem(String itemId) => List<ItemComment>.unmodifiable(
     _comments.where((ItemComment comment) => comment.itemId == itemId),
   );
+
+  @override
+  ManualPaymentOrder? manualPaymentForItem(String itemId) =>
+      _manualPaymentOrdersByItemId[itemId];
 
   @override
   Artwork? artworkById(String artworkId) {
@@ -252,6 +260,58 @@ class DemoCatalog implements MarketplaceRepository {
       success: true,
       message: 'Comment posted to the collectible conversation.',
       data: comment,
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<ManualPaymentOrder>> submitManualPaymentProof({
+    required String orderId,
+    required String paymentMethod,
+    required String payerName,
+    required String payerPhone,
+    required int paidAmountCents,
+    required DateTime paidAt,
+    required String? transactionReference,
+    required Uint8List proofBytes,
+    required String proofFileName,
+    required String proofContentType,
+  }) async {
+    final ManualPaymentOrder? current = _manualPaymentOrdersByItemId.values
+        .where((ManualPaymentOrder order) => order.orderId == orderId)
+        .cast<ManualPaymentOrder?>()
+        .firstWhere((ManualPaymentOrder? order) => order != null, orElse: () => null);
+    if (current == null) {
+      return const MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: 'Order not found.',
+      );
+    }
+
+    final ManualPaymentOrder updated = ManualPaymentOrder(
+      orderId: current.orderId,
+      itemId: current.itemId,
+      orderStatus: current.orderStatus,
+      paymentStatus: 'under_review',
+      paymentProvider: current.paymentProvider,
+      paymentReference: current.paymentReference,
+      amountCents: current.amountCents,
+      createdAt: current.createdAt,
+      reviewStatus: 'submitted',
+      paymentMethod: paymentMethod,
+      payerName: payerName,
+      payerPhone: payerPhone,
+      submittedAmountCents: paidAmountCents,
+      paidAt: paidAt,
+      transactionReference: transactionReference,
+      reviewNote: null,
+      submittedAt: DateTime.now(),
+      reviewedAt: null,
+    );
+    _manualPaymentOrdersByItemId[current.itemId] = updated;
+    return MarketplaceActionResult<ManualPaymentOrder>(
+      success: true,
+      message: 'Payment proof submitted for admin review.',
+      data: updated,
     );
   }
 
@@ -623,13 +683,33 @@ class DemoCatalog implements MarketplaceRepository {
     String? successUrl,
     String? cancelUrl,
   }) async {
+    if (provider == 'manual_transfer') {
+      final Listing? listing = _listings
+          .where((Listing candidate) => candidate.itemId == itemId && candidate.isActive)
+          .cast<Listing?>()
+          .firstWhere((Listing? candidate) => candidate != null, orElse: () => null);
+      if (listing != null) {
+        _manualPaymentOrdersByItemId[itemId] = ManualPaymentOrder(
+          orderId: 'order-$itemId',
+          itemId: itemId,
+          orderStatus: 'payment_pending',
+          paymentStatus: 'pending',
+          paymentProvider: provider,
+          paymentReference: 'manual_${itemId}_$buyerUserId',
+          amountCents: listing.askingPrice,
+          createdAt: DateTime.now(),
+        );
+      }
+    }
     return MarketplaceActionResult<ResaleCheckoutSession>(
       success: true,
-      message: 'Demo checkout session created.',
+      message: provider == 'manual_transfer'
+          ? 'Demo manual payment instructions created.'
+          : 'Demo checkout session created.',
       data: ResaleCheckoutSession(
         orderId: 'order-$itemId',
         provider: provider,
-        status: 'requires_action',
+        status: provider == 'manual_transfer' ? 'awaiting_payment' : 'requires_action',
         providerReference: 'demo-$itemId-$buyerUserId',
         checkoutUrl: successUrl,
         clientSecret: 'secret-$itemId',

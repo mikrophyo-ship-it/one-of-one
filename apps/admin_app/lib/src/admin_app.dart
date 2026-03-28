@@ -182,7 +182,10 @@ class _AdminShellState extends State<AdminShell> {
         customers: _snapshot?.customers ?? const <AdminCustomerRecord>[],
         onSetRole: _setUserRole,
       ),
-      OrdersPanel(orders: _snapshot?.orders ?? const <AdminOrderRecord>[]),
+      OrdersPanel(
+        orders: _snapshot?.orders ?? const <AdminOrderRecord>[],
+        onReviewManualPayment: _reviewManualPayment,
+      ),
       FinancePanel(finance: _snapshot?.finance ?? const <AdminFinanceRecord>[]),
       ListingsPanel(
         listings: _snapshot?.listings ?? const <AdminListingRecord>[],
@@ -375,6 +378,7 @@ class _AdminShellState extends State<AdminShell> {
           : 'Block listing',
       hint: 'Add an internal moderation note',
       confirmLabel: action == 'restore' ? 'Restore' : 'Confirm',
+      required: false,
     );
     if (note == null) {
       return;
@@ -430,6 +434,7 @@ class _AdminShellState extends State<AdminShell> {
       title: title,
       hint: 'Add an internal note for this item action',
       confirmLabel: 'Apply',
+      required: false,
     );
     if (note == null) {
       return;
@@ -571,6 +576,47 @@ class _AdminShellState extends State<AdminShell> {
   Future<void> _createAuthenticityRecord(AdminInventoryRecord item) async {
     final MarketplaceActionResult<AdminInventoryRecord> result =
         await _adminService.createAuthenticityRecord(itemId: item.itemId);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _reviewManualPayment(
+    AdminOrderRecord order,
+    String action,
+  ) async {
+    final bool requiresReason = action != 'approve';
+    final String? note = await _promptForNote(
+      title: action == 'approve'
+          ? 'Approve payment proof'
+          : action == 'reject'
+          ? 'Reject payment proof'
+          : action == 'cancel'
+          ? 'Cancel order'
+          : 'Request payment resubmission',
+      hint: requiresReason
+          ? 'Reason is required for this action'
+          : 'Add an internal review note (optional)',
+      confirmLabel: action == 'approve'
+          ? 'Approve'
+          : action == 'reject'
+          ? 'Reject'
+          : action == 'cancel'
+          ? 'Cancel order'
+          : 'Request update',
+      required: requiresReason,
+    );
+    if (note == null) {
+      return;
+    }
+
+    final MarketplaceActionResult<AdminOrderRecord> result = await _adminService
+        .reviewManualPayment(orderId: order.orderId, action: action, note: note);
     if (!mounted) {
       return;
     }
@@ -751,32 +797,46 @@ class _AdminShellState extends State<AdminShell> {
     required String title,
     required String hint,
     required String confirmLabel,
+    required bool required,
   }) async {
     String note = '';
     final String? result = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1A1712),
-          title: Text(title),
-          content: TextField(
-            minLines: 3,
-            maxLines: 5,
-            decoration: InputDecoration(hintText: hint),
-            onChanged: (String nextValue) {
-              note = nextValue;
-            },
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(note.trim()),
-              child: Text(confirmLabel),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (BuildContext context, void Function(void Function()) setState) {
+            final bool hasReason = note.trim().isNotEmpty;
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1A1712),
+              title: Text(title),
+              content: TextField(
+                minLines: 3,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  hintText: hint,
+                  errorText: required && !hasReason
+                      ? 'A reason is required.'
+                      : null,
+                ),
+                onChanged: (String value) {
+                  note = value;
+                  setState(() {});
+                },
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+                FilledButton(
+                  onPressed: required && !hasReason
+                      ? null
+                      : () => Navigator.of(context).pop(note.trim()),
+                  child: Text(confirmLabel),
+                ),
+              ],
+            );
+          },
         );
       },
     );

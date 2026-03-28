@@ -88,9 +88,11 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
         disputes: disputeRows
             .map((dynamic row) => _disputeFromRow(row as Map<String, dynamic>))
             .toList(),
-        orders: orderRows
-            .map((dynamic row) => _orderFromRow(row as Map<String, dynamic>))
-            .toList(),
+        orders: await Future.wait(
+          orderRows.map(
+            (dynamic row) => _orderFromRow(row as Map<String, dynamic>),
+          ),
+        ),
         artists: artistRows
             .map((dynamic row) => _artistFromRow(row as Map<String, dynamic>))
             .toList(),
@@ -648,6 +650,49 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     }
   }
 
+  @override
+  Future<MarketplaceActionResult<AdminOrderRecord>> reviewManualPayment({
+    required String orderId,
+    required String action,
+    required String note,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminOrderRecord>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'admin_review_manual_payment',
+        params: <String, dynamic>{
+          'p_order_id': orderId,
+          'p_action': action,
+          'p_note': note.isEmpty ? null : note,
+        },
+      );
+      await refresh();
+      return MarketplaceActionResult<AdminOrderRecord>(
+        success: true,
+        message: action == 'approve'
+            ? 'Payment proof approved and order advanced to fulfillment.'
+            : action == 'reject'
+            ? 'Payment proof rejected and the order was released.'
+            : action == 'cancel'
+            ? 'Order cancelled and removed from the active review queue.'
+            : 'Payment proof marked for resubmission.',
+        data: _findOrder(orderId),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminOrderRecord>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
   Future<MarketplaceActionResult<void>> _assertAdminAccess() async {
     final String? currentUserId = _client?.auth.currentUser?.id;
     if (currentUserId == null) {
@@ -758,7 +803,20 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     );
   }
 
-  AdminOrderRecord _orderFromRow(Map<String, dynamic> row) {
+  Future<AdminOrderRecord> _orderFromRow(Map<String, dynamic> row) async {
+    String? paymentProofUrl;
+    final String? proofBucket = _nullableString(row['payment_proof_bucket']);
+    final String? proofPath = _nullableString(row['payment_proof_path']);
+    if (proofBucket != null && proofPath != null) {
+      try {
+        paymentProofUrl = await _client!.storage
+            .from(proofBucket)
+            .createSignedUrl(proofPath, 3600);
+      } on StorageException {
+        paymentProofUrl = null;
+      }
+    }
+
     return AdminOrderRecord(
       orderId: row['order_id'].toString(),
       listingId: _nullableString(row['listing_id']),
@@ -783,6 +841,23 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       sellerPayoutStatus: _nullableString(row['seller_payout_status']),
       royaltyStatus: _nullableString(row['royalty_status']),
       platformFeeStatus: _nullableString(row['platform_fee_status']),
+      manualPaymentReviewStatus: _nullableString(
+        row['manual_payment_review_status'],
+      ),
+      manualPaymentMethod: _nullableString(row['manual_payment_method']),
+      payerName: _nullableString(row['payer_name']),
+      payerPhone: _nullableString(row['payer_phone']),
+      submittedAmountCents: row['submitted_amount_cents'] == null
+          ? null
+          : _toInt(row['submitted_amount_cents']),
+      paidAt: _nullableDateTime(row['paid_at']),
+      transactionReference: _nullableString(row['transaction_reference']),
+      paymentProofBucket: proofBucket,
+      paymentProofPath: proofPath,
+      paymentProofUrl: paymentProofUrl,
+      paymentReviewNote: _nullableString(row['payment_review_note']),
+      reviewedAt: _nullableDateTime(row['reviewed_at']),
+      reviewedByDisplayName: _nullableString(row['reviewed_by_display_name']),
     );
   }
 
@@ -963,6 +1038,16 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     return null;
   }
 
+  AdminOrderRecord? _findOrder(String orderId) {
+    for (final AdminOrderRecord order
+        in _snapshot?.orders ?? const <AdminOrderRecord>[]) {
+      if (order.orderId == orderId) {
+        return order;
+      }
+    }
+    return null;
+  }
+
   String _friendlyMessage(String message) {
     if (message.contains('Admin access required')) {
       return 'Sign in with an admin-approved account to continue.';
@@ -1022,6 +1107,24 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     }
     if (message.contains('Unsupported listing status')) {
       return 'Use draft or active when saving an operational listing.';
+    }
+    if (message.contains('Payment proof not found for order')) {
+      return 'No payment proof is available for review on this order yet.';
+    }
+    if (message.contains('Unsupported payment review action')) {
+      return 'Use approve, reject, request resubmission, or cancel for order review.';
+    }
+    if (message.contains('Reason is required for this order action')) {
+      return 'Add a clear reason before rejecting, requesting resubmission, or cancelling an order.';
+    }
+    if (message.contains('Order cannot be cancelled from its current state')) {
+      return 'This order is already closed and cannot be cancelled from the queue.';
+    }
+    if (message.contains('Paid orders cannot be cancelled from this review flow')) {
+      return 'Use the downstream fulfillment or refund workflow for orders that are already paid.';
+    }
+    if (message.contains('Payment amount does not match order total')) {
+      return 'Submitted payment amount does not match the expected order total.';
     }
     return message;
   }

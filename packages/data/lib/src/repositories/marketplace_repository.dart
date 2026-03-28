@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:domain/domain.dart';
 
 abstract class MarketplaceRepository {
@@ -6,6 +8,7 @@ abstract class MarketplaceRepository {
   List<UniqueItem> items();
   List<Listing> activeListings();
   List<ItemComment> commentsForItem(String itemId);
+  ManualPaymentOrder? manualPaymentForItem(String itemId);
   List<OwnershipRecord> ownershipHistory(String itemId);
   UniqueItem? itemById(String itemId);
   Artwork? artworkById(String artworkId);
@@ -68,6 +71,18 @@ abstract class MarketplaceRepository {
   Future<MarketplaceActionResult<ItemComment>> addItemComment({
     required String itemId,
     required String body,
+  });
+  Future<MarketplaceActionResult<ManualPaymentOrder>> submitManualPaymentProof({
+    required String orderId,
+    required String paymentMethod,
+    required String payerName,
+    required String payerPhone,
+    required int paidAmountCents,
+    required DateTime paidAt,
+    required String? transactionReference,
+    required Uint8List proofBytes,
+    required String proofFileName,
+    required String proofContentType,
   });
   Future<MarketplaceActionResult<UniqueItem>> buyResaleItem({
     required String itemId,

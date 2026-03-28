@@ -1,8 +1,8 @@
 import 'dart:async';
-
 import 'package:core_ui/core_ui.dart';
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -14,6 +14,22 @@ import 'package:utils/utils.dart';
 import 'app_environment.dart';
 import 'authenticity_link_source.dart';
 
+typedef PaymentProofPicker = Future<SelectedPaymentProof?> Function();
+
+class SelectedPaymentProof {
+  const SelectedPaymentProof({
+    required this.bytes,
+    required this.fileName,
+    required this.contentType,
+    required this.sizeBytes,
+  });
+
+  final Uint8List bytes;
+  final String fileName;
+  final String contentType;
+  final int sizeBytes;
+}
+
 class OneOfOneCustomerApp extends StatelessWidget {
   const OneOfOneCustomerApp({
     super.key,
@@ -22,6 +38,7 @@ class OneOfOneCustomerApp extends StatelessWidget {
     this.authService,
     this.checkoutConfig,
     this.authenticityLinkSource,
+    this.paymentProofPicker,
     this.enableCameraScanner = true,
   });
 
@@ -30,6 +47,7 @@ class OneOfOneCustomerApp extends StatelessWidget {
   final SupabaseAuthService? authService;
   final CheckoutPresentationConfig? checkoutConfig;
   final AuthenticityLinkSource? authenticityLinkSource;
+  final PaymentProofPicker? paymentProofPicker;
   final bool enableCameraScanner;
 
   @override
@@ -44,6 +62,7 @@ class OneOfOneCustomerApp extends StatelessWidget {
         authService: authService,
         checkoutConfig: checkoutConfig,
         authenticityLinkSource: authenticityLinkSource,
+        paymentProofPicker: paymentProofPicker,
         enableCameraScanner: enableCameraScanner,
       ),
     );
@@ -58,6 +77,7 @@ class CustomerRoot extends StatefulWidget {
     this.authService,
     this.checkoutConfig,
     this.authenticityLinkSource,
+    this.paymentProofPicker,
     this.enableCameraScanner = true,
   });
 
@@ -66,6 +86,7 @@ class CustomerRoot extends StatefulWidget {
   final SupabaseAuthService? authService;
   final CheckoutPresentationConfig? checkoutConfig;
   final AuthenticityLinkSource? authenticityLinkSource;
+  final PaymentProofPicker? paymentProofPicker;
   final bool enableCameraScanner;
 
   @override
@@ -94,7 +115,7 @@ class _CustomerRootState extends State<CustomerRoot> {
         widget.workflowService ??
         MarketplaceWorkflowService(
           repository: repository,
-          paymentProvider: const StripePaymentProvider(),
+          paymentProvider: const ManualPaymentProvider(),
         );
     controller = CustomerController(
       repository: repository,
@@ -102,6 +123,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       authService: authService,
       checkoutConfig: checkoutConfig,
       authenticityLinkSource: authenticityLinkSource,
+      paymentProofPicker: widget.paymentProofPicker ?? _defaultPaymentProofPicker,
     );
     unawaited(controller.initialize());
   }
@@ -126,6 +148,36 @@ class _CustomerRootState extends State<CustomerRoot> {
       return SupabaseAuthService(client: Supabase.instance.client);
     }
     return SupabaseAuthService(configurationError: configurationError);
+  }
+
+  Future<SelectedPaymentProof?> _defaultPaymentProofPicker() async {
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) {
+        return null;
+      }
+      final PlatformFile file = result.files.first;
+      if (file.bytes == null) {
+        throw StateError(
+          'The selected image could not be read. Please choose another screenshot.',
+        );
+      }
+      return SelectedPaymentProof(
+        bytes: file.bytes!,
+        fileName: file.name.trim().isEmpty ? 'payment-proof.jpg' : file.name,
+        contentType: _contentTypeForProofFileName(file.name),
+        sizeBytes: file.size,
+      );
+    } catch (error) {
+      throw StateError(
+        error is StateError
+            ? error.toString().replaceFirst('Bad state: ', '')
+            : 'Unable to open the screenshot picker right now.',
+      );
+    }
   }
 
   @override
@@ -258,17 +310,20 @@ class CustomerController extends ChangeNotifier {
     required SupabaseAuthService authService,
     required CheckoutPresentationConfig checkoutConfig,
     required AuthenticityLinkSource authenticityLinkSource,
+    required PaymentProofPicker paymentProofPicker,
   }) : _repository = repository,
         _workflowService = workflowService,
         _authService = authService,
         _checkoutConfig = checkoutConfig,
-        _authenticityLinkSource = authenticityLinkSource;
+        _authenticityLinkSource = authenticityLinkSource,
+        _paymentProofPicker = paymentProofPicker;
 
   final MarketplaceRepository _repository;
   final MarketplaceWorkflowService _workflowService;
   final SupabaseAuthService _authService;
   final CheckoutPresentationConfig _checkoutConfig;
   final AuthenticityLinkSource _authenticityLinkSource;
+  final PaymentProofPicker _paymentProofPicker;
 
   StreamSubscription<AuthState>? _authSubscription;
   StreamSubscription<Uri>? _authenticityLinkSubscription;
@@ -307,6 +362,8 @@ class CustomerController extends ChangeNotifier {
       .where((UniqueItem item) => savedItemIds.contains(item.id))
       .toList();
   List<ItemComment> commentsFor(String itemId) => _repository.commentsForItem(itemId);
+  ManualPaymentOrder? manualPaymentFor(String itemId) =>
+      _repository.manualPaymentForItem(itemId);
 
   Future<void> initialize() async {
     _authSubscription ??= _authService.authStateChanges().listen((AuthState _) {
@@ -715,6 +772,106 @@ class CustomerController extends ChangeNotifier {
         : 'Hosted Stripe checkout is ready${session.checkoutUrl == null ? '.' : ': ${session.checkoutUrl}'}';
     notifyListeners();
     return statusMessage!;
+  }
+
+  Future<MarketplaceActionResult<ResaleCheckoutSession>> startManualCheckout({
+    required String itemId,
+  }) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return MarketplaceActionResult<ResaleCheckoutSession>(
+        success: false,
+        message: _failAction(authMessage),
+      );
+    }
+
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    final MarketplaceActionResult<ResaleCheckoutSession> result =
+        await _workflowService.startResaleCheckout(
+          itemId: itemId,
+          buyerUserId: currentUserId,
+          successUrl: null,
+          cancelUrl: null,
+        );
+    if (result.success && result.data != null) {
+      lastCheckoutOrderId = result.data!.orderId;
+      statusMessage =
+          'Manual payment instructions are ready. Submit your proof after paying with the reference ${result.data!.providerReference}.';
+    } else {
+      errorMessage = result.message;
+    }
+    notifyListeners();
+    return result;
+  }
+
+  Future<MarketplaceActionResult<SelectedPaymentProof>> pickPaymentProof() async {
+    try {
+      final SelectedPaymentProof? proof = await _paymentProofPicker();
+      if (proof == null) {
+        return const MarketplaceActionResult<SelectedPaymentProof>(
+          success: false,
+          message: 'No screenshot was selected.',
+        );
+      }
+      return MarketplaceActionResult<SelectedPaymentProof>(
+        success: true,
+        message: 'Payment screenshot selected.',
+        data: proof,
+      );
+    } catch (error) {
+      return MarketplaceActionResult<SelectedPaymentProof>(
+        success: false,
+        message: error.toString().replaceFirst('Bad state: ', ''),
+      );
+    }
+  }
+
+  Future<MarketplaceActionResult<ManualPaymentOrder>> submitManualPaymentProof({
+    required String orderId,
+    required String paymentMethod,
+    required String payerName,
+    required String payerPhone,
+    required int paidAmountCents,
+    required DateTime paidAt,
+    required String? transactionReference,
+    required SelectedPaymentProof proof,
+  }) async {
+    final String? authMessage = _requireAuthenticatedAction();
+    if (authMessage != null) {
+      return MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: _failAction(authMessage),
+      );
+    }
+
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    final MarketplaceActionResult<ManualPaymentOrder> result =
+        await _workflowService.submitManualPaymentProof(
+          orderId: orderId,
+          paymentMethod: paymentMethod,
+          payerName: payerName,
+          payerPhone: payerPhone,
+          paidAmountCents: paidAmountCents,
+          paidAt: paidAt,
+          transactionReference: transactionReference,
+          proofBytes: proof.bytes,
+          proofFileName: proof.fileName,
+          proofContentType: proof.contentType,
+        );
+
+    if (result.success) {
+      statusMessage = result.message;
+    } else {
+      errorMessage = result.message;
+    }
+    notifyListeners();
+    return result;
   }
 
   Future<MarketplaceActionResult<ItemComment>> addComment({
@@ -1703,6 +1860,9 @@ class ItemDetailScreen extends StatelessWidget {
           final FeeBreakdown breakdown = controller.breakdownFor(item);
           final List<OwnershipRecord> history = controller.historyFor(item.id);
           final List<ItemComment> comments = controller.commentsFor(item.id);
+          final ManualPaymentOrder? paymentOrder = controller.manualPaymentFor(
+            item.id,
+          );
           return ListView(
             padding: const EdgeInsets.all(20),
             children: <Widget>[
@@ -1802,6 +1962,14 @@ class ItemDetailScreen extends StatelessWidget {
               trailing: Text(formatCurrency(breakdown.sellerPayout)),
             ),
           ],
+          if (paymentOrder != null) ...<Widget>[
+            const SizedBox(height: 12),
+            _ManualPaymentStatusCard(
+              controller: controller,
+              item: item,
+              paymentOrder: paymentOrder,
+            ),
+          ],
           const SizedBox(height: 16),
           _CommentsSection(
             controller: controller,
@@ -1813,22 +1981,16 @@ class ItemDetailScreen extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: <Widget>[
-              if (item.askingPrice != null &&
-                  item.state == ItemState.listedForResale &&
-                  item.currentOwnerUserId != controller.currentUserId &&
-                  !item.state.isRestricted)
+              if (_manualPaymentActionLabel(
+                    item: item,
+                    controller: controller,
+                    paymentOrder: paymentOrder,
+                  ) case final String paymentActionLabel)
                 ElevatedButton(
                   onPressed: () async {
-                    final String message = await controller.buyResale(
-                      itemId: item.id,
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(message)));
-                    }
+                    await _openManualPaymentSheet(context, controller, item);
                   },
-                  child: const Text('Authorize checkout'),
+                  child: Text(paymentActionLabel),
                 ),
               if (item.currentOwnerUserId == controller.currentUserId &&
                   (item.state == ItemState.claimed ||
@@ -1888,6 +2050,493 @@ class ItemDetailScreen extends StatelessWidget {
           ],
           );
         },
+      ),
+    );
+  }
+}
+
+Future<void> _openManualPaymentSheet(
+  BuildContext context,
+  CustomerController controller,
+  UniqueItem item,
+) async {
+  ManualPaymentOrder? paymentOrder = controller.manualPaymentFor(item.id);
+  if (paymentOrder == null) {
+    final MarketplaceActionResult<ResaleCheckoutSession> checkout =
+        await controller.startManualCheckout(itemId: item.id);
+    if (!context.mounted) {
+      return;
+    }
+    if (!checkout.success) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(checkout.message)));
+      return;
+    }
+    paymentOrder = controller.manualPaymentFor(item.id);
+    if (paymentOrder == null) {
+      paymentOrder = ManualPaymentOrder(
+        orderId: checkout.data!.orderId,
+        itemId: item.id,
+        orderStatus: 'payment_pending',
+        paymentStatus: 'pending',
+        paymentProvider: checkout.data!.provider,
+        paymentReference: checkout.data!.providerReference,
+        amountCents: item.askingPrice ?? 0,
+        createdAt: DateTime.now(),
+      );
+    }
+  }
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: true,
+    enableDrag: true,
+    backgroundColor: const Color(0xFF14110D),
+    builder: (BuildContext context) {
+      return _ManualPaymentSheet(
+        controller: controller,
+        item: item,
+        paymentOrder: paymentOrder!,
+      );
+    },
+  );
+}
+
+class _ManualPaymentStatusCard extends StatelessWidget {
+  const _ManualPaymentStatusCard({
+    required this.controller,
+    required this.item,
+    required this.paymentOrder,
+  });
+
+  final CustomerController controller;
+  final UniqueItem item;
+  final ManualPaymentOrder paymentOrder;
+
+  @override
+  Widget build(BuildContext context) {
+    final String statusLabel = _manualPaymentStatusLabel(paymentOrder);
+    final String statusMessage = _manualPaymentStatusMessage(paymentOrder);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Payment verification',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: OneOfOneTheme.gold.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: OneOfOneTheme.gold.withValues(alpha: 0.24),
+                    ),
+                  ),
+                  child: Text(statusLabel),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Order ref ${paymentOrder.paymentReference}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            Text('Amount due: ${formatCurrency(paymentOrder.amountCents)}'),
+            const SizedBox(height: 8),
+            Text(statusMessage),
+            if (paymentOrder.paymentMethod != null)
+              Text('Method: ${paymentOrder.paymentMethod}'),
+            if (paymentOrder.payerName != null)
+              Text('Payer: ${paymentOrder.payerName}'),
+            if (paymentOrder.payerPhone != null)
+              Text('Phone: ${paymentOrder.payerPhone}'),
+            if (paymentOrder.reviewNote != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  paymentOrder.reviewNote!,
+                  style: TextStyle(
+                    color: OneOfOneTheme.gold.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (paymentOrder.canSubmitProof)
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => _openManualPaymentSheet(
+                    context,
+                    controller,
+                    item,
+                  ),
+                  child: Text(
+                    paymentOrder.reviewStatus == 'resubmission_requested'
+                        ? 'Resubmit proof'
+                        : 'Continue payment',
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ManualPaymentSheet extends StatefulWidget {
+  const _ManualPaymentSheet({
+    required this.controller,
+    required this.item,
+    required this.paymentOrder,
+  });
+
+  final CustomerController controller;
+  final UniqueItem item;
+  final ManualPaymentOrder paymentOrder;
+
+  @override
+  State<_ManualPaymentSheet> createState() => _ManualPaymentSheetState();
+}
+
+class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
+  static const int _maxProofBytes = 8 * 1024 * 1024;
+  static const Set<String> _supportedProofContentTypes = <String>{
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+  };
+  static const List<String> _methods = <String>[
+    'WavePay',
+    'KBZPay',
+    'Bank transfer',
+  ];
+
+  late final TextEditingController _payerNameController;
+  late final TextEditingController _payerPhoneController;
+  late final TextEditingController _amountController;
+  late final TextEditingController _paidAtController;
+  late final TextEditingController _referenceController;
+  String _paymentMethod = _methods.first;
+  bool _submitting = false;
+  String? _message;
+  bool _messageIsError = false;
+  SelectedPaymentProof? _proof;
+
+  bool get _canSubmit =>
+      !_submitting &&
+      _proof != null &&
+      _payerNameController.text.trim().isNotEmpty &&
+      _payerPhoneController.text.trim().isNotEmpty &&
+      int.tryParse(_amountController.text.trim()) != null &&
+      _parsePaidAt() != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _payerNameController = TextEditingController(
+      text: widget.controller.currentDisplayName ?? '',
+    );
+    _payerPhoneController = TextEditingController();
+    _amountController = TextEditingController(
+      text: widget.paymentOrder.amountCents.toString(),
+    );
+    _paidAtController = TextEditingController(
+      text: DateTime.now().toLocal().toIso8601String().substring(0, 16),
+    );
+    _referenceController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _payerNameController.dispose();
+    _payerPhoneController.dispose();
+    _amountController.dispose();
+    _paidAtController.dispose();
+    _referenceController.dispose();
+    super.dispose();
+  }
+
+  DateTime? _parsePaidAt() {
+    final String raw = _paidAtController.text.trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(raw.replaceFirst(' ', 'T'))?.toUtc();
+  }
+
+  String? _validateProof(SelectedPaymentProof proof) {
+    if (!_supportedProofContentTypes.contains(proof.contentType)) {
+      return 'Choose a PNG, JPG, WEBP, or GIF screenshot.';
+    }
+    if (proof.sizeBytes > _maxProofBytes) {
+      return 'Payment screenshots must be 8 MB or smaller.';
+    }
+    return null;
+  }
+
+  Future<void> _pickProof() async {
+    final MarketplaceActionResult<SelectedPaymentProof> result =
+        await widget.controller.pickPaymentProof();
+    if (!mounted) {
+      return;
+    }
+    if (!result.success || result.data == null) {
+      setState(() {
+        _message = result.message == 'No screenshot was selected.'
+            ? null
+            : result.message;
+        _messageIsError = result.message != 'No screenshot was selected.';
+      });
+      return;
+    }
+    final String? validationMessage = _validateProof(result.data!);
+    if (validationMessage != null) {
+      setState(() {
+        _proof = null;
+        _message = validationMessage;
+        _messageIsError = true;
+      });
+      return;
+    }
+    setState(() {
+      _proof = result.data!;
+      _message = result.message;
+      _messageIsError = false;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) {
+      setState(() {
+        _message =
+            'Add payer details, paid amount/time, and a screenshot proof before submitting.';
+        _messageIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _message = null;
+      _messageIsError = false;
+    });
+
+    final MarketplaceActionResult<ManualPaymentOrder> result =
+        await widget.controller.submitManualPaymentProof(
+          orderId: widget.paymentOrder.orderId,
+          paymentMethod: _paymentMethod,
+          payerName: _payerNameController.text.trim(),
+          payerPhone: _payerPhoneController.text.trim(),
+          paidAmountCents: int.parse(_amountController.text.trim()),
+          paidAt: _parsePaidAt()!,
+          transactionReference: _referenceController.text.trim().isEmpty
+              ? null
+              : _referenceController.text.trim(),
+          proof: _proof!,
+        );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _submitting = false;
+      _message = result.success
+          ? 'Payment proof submitted. Admin review will update this order status.'
+          : result.message;
+      _messageIsError = !result.success;
+    });
+
+    if (result.success) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final EdgeInsets bottomInset = EdgeInsets.only(
+      bottom: MediaQuery.of(context).viewInsets.bottom,
+    );
+    return SafeArea(
+      child: Padding(
+        padding: bottomInset,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      'Manual payment verification',
+                      style: Theme.of(context).textTheme.displaySmall,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close payment sheet',
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Send ${formatCurrency(widget.paymentOrder.amountCents)} using your local transfer method, then submit the proof below with reference ${widget.paymentOrder.paymentReference}.',
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text('Accepted methods'),
+                      const SizedBox(height: 8),
+                      Text(_methods.join(' | ')),
+                      const SizedBox(height: 8),
+                      Text('Payment reference: ${widget.paymentOrder.paymentReference}'),
+                      Text('Amount due: ${formatCurrency(widget.paymentOrder.amountCents)}'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _paymentMethod,
+                items: _methods
+                    .map(
+                      (String method) => DropdownMenuItem<String>(
+                        value: method,
+                        child: Text(method),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _submitting
+                    ? null
+                    : (String? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() {
+                          _paymentMethod = value;
+                        });
+                      },
+                decoration: const InputDecoration(labelText: 'Payment method'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _payerNameController,
+                enabled: !_submitting,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: 'Payer name'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _payerPhoneController,
+                enabled: !_submitting,
+                keyboardType: TextInputType.phone,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: 'Payer phone'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _amountController,
+                enabled: !_submitting,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: 'Paid amount (MMK)'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _paidAtController,
+                enabled: !_submitting,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Paid time',
+                  helperText: 'Use YYYY-MM-DDTHH:MM or YYYY-MM-DD HH:MM',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _referenceController,
+                enabled: !_submitting,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Transaction / reference number (optional)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _submitting ? null : _pickProof,
+                icon: const Icon(Icons.upload_file_outlined),
+                label: Text(
+                  _proof == null ? 'Upload payment screenshot' : _proof!.fileName,
+                ),
+              ),
+              if (_message != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  _message!,
+                  style: TextStyle(
+                    color: _messageIsError
+                        ? Theme.of(context).colorScheme.error
+                        : OneOfOneTheme.gold,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  TextButton(
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    onPressed: _canSubmit ? _submit : null,
+                    child: _submitting
+                        ? const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              SizedBox(width: 10),
+                              Text('Submitting...'),
+                            ],
+                          )
+                        : const Text('Submit payment proof'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2154,6 +2803,90 @@ class _InteractiveCollectiblePreviewState
       ),
     );
   }
+}
+
+String _manualPaymentStatusLabel(ManualPaymentOrder order) {
+  if (order.orderStatus == 'cancelled') {
+    return 'cancelled';
+  }
+  if (order.orderStatus == 'fulfilled') {
+    return 'completed';
+  }
+  if (order.orderStatus == 'failed' || order.paymentStatus == 'failed') {
+    return 'payment_rejected';
+  }
+  if (order.orderStatus == 'paid') {
+    return 'ready_to_ship';
+  }
+  if (order.paymentStatus == 'under_review') {
+    return 'under_review';
+  }
+  return switch (order.reviewStatus) {
+    'submitted' => 'payment_submitted',
+    'approved' => 'approved',
+    'resubmission_requested' => 'resubmission_needed',
+    'rejected' => 'payment_rejected',
+    _ => 'awaiting_payment',
+  };
+}
+
+String? _manualPaymentActionLabel({
+  required UniqueItem item,
+  required CustomerController controller,
+  required ManualPaymentOrder? paymentOrder,
+}) {
+  if (paymentOrder != null) {
+    if (paymentOrder.canSubmitProof) {
+      return paymentOrder.reviewStatus == 'resubmission_requested'
+          ? 'Resubmit payment proof'
+          : 'Continue payment';
+    }
+    return null;
+  }
+  if (item.askingPrice != null &&
+      item.state == ItemState.listedForResale &&
+      item.currentOwnerUserId != controller.currentUserId &&
+      !item.state.isRestricted) {
+    return 'Start payment';
+  }
+  return null;
+}
+
+String _manualPaymentStatusMessage(ManualPaymentOrder order) {
+  if (order.orderStatus == 'cancelled') {
+    return 'This order was cancelled after admin review.';
+  }
+  if (order.orderStatus == 'paid') {
+    return 'Payment verified. The order is ready for the next fulfillment step.';
+  }
+  if (order.orderStatus == 'failed' || order.paymentStatus == 'failed') {
+    return 'This payment was rejected after review. The order is closed.';
+  }
+  if (order.reviewStatus == 'resubmission_requested') {
+    return 'Admin requested an updated screenshot or payment detail. Reopen the flow to resubmit.';
+  }
+  if (order.reviewStatus == 'rejected' || order.paymentStatus == 'rejected') {
+    return 'This payment proof was rejected. Contact support or submit a new proof if allowed.';
+  }
+  if (order.paymentStatus == 'under_review' ||
+      order.reviewStatus == 'submitted') {
+    return 'Payment proof submitted. Admin review is in progress.';
+  }
+  return 'Your order reference is ready. Complete the transfer, then continue here to submit proof.';
+}
+
+String _contentTypeForProofFileName(String fileName) {
+  final String lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (lowerName.endsWith('.webp')) {
+    return 'image/webp';
+  }
+  if (lowerName.endsWith('.gif')) {
+    return 'image/gif';
+  }
+  return 'image/jpeg';
 }
 
 class _CommentsSection extends StatefulWidget {

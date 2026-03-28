@@ -1,5 +1,7 @@
 // ignore_for_file: unnecessary_non_null_assertion
 
+import 'dart:typed_data';
+
 import 'package:domain/domain.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -26,6 +28,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
   List<CollectorNotification> _notifications = <CollectorNotification>[];
   Map<String, List<ItemComment>> _commentsByItemId =
       <String, List<ItemComment>>{};
+  Map<String, ManualPaymentOrder> _manualPaymentsByItemId =
+      <String, ManualPaymentOrder>{};
 
   @override
   List<Listing> activeListings() => List<Listing>.unmodifiable(_listings);
@@ -35,6 +39,10 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       List<ItemComment>.unmodifiable(
         _commentsByItemId[itemId] ?? const <ItemComment>[],
       );
+
+  @override
+  ManualPaymentOrder? manualPaymentForItem(String itemId) =>
+      _manualPaymentsByItemId[itemId];
 
   @override
   Artwork? artworkById(String artworkId) {
@@ -181,6 +189,104 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       );
     } on PostgrestException catch (error) {
       return MarketplaceActionResult<ItemComment>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<ManualPaymentOrder>> submitManualPaymentProof({
+    required String orderId,
+    required String paymentMethod,
+    required String payerName,
+    required String payerPhone,
+    required int paidAmountCents,
+    required DateTime paidAt,
+    required String? transactionReference,
+    required Uint8List proofBytes,
+    required String proofFileName,
+    required String proofContentType,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    final User? currentUser = _client?.auth.currentUser;
+    if (currentUser == null) {
+      return const MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: 'Sign in with a real collector account to continue.',
+      );
+    }
+
+    if (!_supportedProofContentTypes.contains(proofContentType)) {
+      return const MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: 'Upload a PNG, JPG, WEBP, or GIF payment screenshot.',
+      );
+    }
+
+    if (proofBytes.length > 8 * 1024 * 1024) {
+      return const MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: 'Payment proof images must be 8 MB or smaller.',
+      );
+    }
+
+    final String sanitizedFileName = proofFileName.replaceAll(
+      RegExp(r'[^a-zA-Z0-9._-]'),
+      '_',
+    );
+    final String storagePath =
+        '${currentUser.id}/$orderId/${DateTime.now().millisecondsSinceEpoch}_$sanitizedFileName';
+
+    try {
+      await _client!.storage.from('payment-proofs').uploadBinary(
+        storagePath,
+        proofBytes,
+        fileOptions: FileOptions(
+          contentType: proofContentType,
+          upsert: false,
+        ),
+      );
+
+      final List<dynamic> rows =
+          (await _client!.rpc(
+                'submit_manual_payment_proof',
+                params: <String, dynamic>{
+                  'p_order_id': orderId,
+                  'p_payment_method': paymentMethod,
+                  'p_payer_name': payerName,
+                  'p_payer_phone': payerPhone,
+                  'p_paid_amount_cents': paidAmountCents,
+                  'p_paid_at': paidAt.toUtc().toIso8601String(),
+                  'p_transaction_reference': transactionReference,
+                  'p_proof_bucket': 'payment-proofs',
+                  'p_proof_path': storagePath,
+                },
+              ))
+              as List<dynamic>;
+      await refresh(userId: currentUser.id);
+      final ManualPaymentOrder? paymentOrder = rows.isEmpty
+          ? _manualPaymentByOrderId(orderId)
+          : _manualPaymentOrderFromRow(rows.first as Map<String, dynamic>);
+      return MarketplaceActionResult<ManualPaymentOrder>(
+        success: true,
+        message: 'Payment proof submitted for admin review.',
+        data: paymentOrder,
+      );
+    } on StorageException catch (error) {
+      return MarketplaceActionResult<ManualPaymentOrder>(
+        success: false,
+        message: error.message,
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<ManualPaymentOrder>(
         success: false,
         message: _friendlyMessage(error),
       );
@@ -623,6 +729,7 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     List<dynamic> myCollectibleRows = <dynamic>[];
     List<dynamic> savedItemRows = <dynamic>[];
     List<dynamic> notificationRows = <dynamic>[];
+    List<dynamic> paymentOrderRows = <dynamic>[];
     if (currentUserId() != null) {
       myCollectibleRows =
           (await _client!.rpc('get_my_collectibles')) as List<dynamic>;
@@ -630,6 +737,9 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
           (await _client!.rpc('get_my_saved_collectibles')) as List<dynamic>;
       notificationRows =
           (await _client!.rpc('get_my_notifications')) as List<dynamic>;
+      paymentOrderRows =
+          (await _client!.rpc('get_my_order_payment_statuses'))
+              as List<dynamic>;
     }
 
     _artists = artistRows
@@ -729,6 +839,11 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
         )
         .toList();
     _commentsByItemId = commentsByItemId;
+    _manualPaymentsByItemId = <String, ManualPaymentOrder>{
+      for (final dynamic row in paymentOrderRows)
+        (row as Map<String, dynamic>)['item_id'].toString():
+            _manualPaymentOrderFromRow(row),
+    };
   }
 
   @override
@@ -800,6 +915,31 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     }
 
     try {
+      if (_manualPaymentProviders.contains(provider)) {
+        final Listing? listing = _activeListingForItem(itemId);
+        if (listing == null) {
+          return const MarketplaceActionResult<ResaleCheckoutSession>(
+            success: false,
+            message: 'Active resale listing not found.',
+          );
+        }
+        final dynamic row = await _client!.rpc(
+          'create_resale_checkout_session',
+          params: <String, dynamic>{
+            'p_listing_id': listing.id,
+            'p_provider': provider,
+            'p_success_url': null,
+            'p_cancel_url': null,
+          },
+        );
+        await refresh(userId: buyerUserId);
+        return MarketplaceActionResult<ResaleCheckoutSession>(
+          success: true,
+          message: 'Manual payment instructions are ready.',
+          data: _checkoutSessionFromRow(row as Map<String, dynamic>),
+        );
+      }
+
       final dynamic response = await _client!.functions.invoke(
         'stripe-create-checkout-session',
         body: <String, dynamic>{
@@ -1029,8 +1169,48 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     );
   }
 
+  ManualPaymentOrder _manualPaymentOrderFromRow(Map<String, dynamic> row) {
+    return ManualPaymentOrder(
+      orderId: row['order_id'].toString(),
+      itemId: row['item_id'].toString(),
+      orderStatus: row['order_status'].toString(),
+      paymentStatus: row['payment_status'].toString(),
+      paymentProvider: row['payment_provider'].toString(),
+      paymentReference: row['payment_reference'].toString(),
+      amountCents: (row['total_cents'] as num?)?.toInt() ?? 0,
+      createdAt: DateTime.parse(row['created_at'].toString()),
+      reviewStatus: _nullableString(row['review_status']),
+      paymentMethod: _nullableString(row['payment_method']),
+      payerName: _nullableString(row['payer_name']),
+      payerPhone: _nullableString(row['payer_phone']),
+      submittedAmountCents: row['paid_amount_cents'] == null
+          ? null
+          : (row['paid_amount_cents'] as num).toInt(),
+      paidAt: row['paid_at'] == null
+          ? null
+          : DateTime.parse(row['paid_at'].toString()),
+      transactionReference: _nullableString(row['transaction_reference']),
+      reviewNote: _nullableString(row['review_note']),
+      submittedAt: row['proof_submitted_at'] == null
+          ? null
+          : DateTime.parse(row['proof_submitted_at'].toString()),
+      reviewedAt: row['reviewed_at'] == null
+          ? null
+          : DateTime.parse(row['reviewed_at'].toString()),
+    );
+  }
+
   String? _qrTokenForItem(String itemId) {
     return _qrTokensByItemId[itemId];
+  }
+
+  ManualPaymentOrder? _manualPaymentByOrderId(String orderId) {
+    for (final ManualPaymentOrder order in _manualPaymentsByItemId.values) {
+      if (order.orderId == orderId) {
+        return order;
+      }
+    }
+    return null;
   }
 
   String _friendlyMessage(PostgrestException error) {
@@ -1060,8 +1240,39 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
     if (message.contains('delivery') || message.contains('review window')) {
       return 'Delivery confirmation is still pending for this order.';
     }
+    if (message.contains('A payment proof is already awaiting review')) {
+      return 'A payment proof is already under review for this order.';
+    }
+    if (message.contains('Payment proof upload is required')) {
+      return 'Upload a payment screenshot before submitting for review.';
+    }
+    if (message.contains('Paid amount must be greater than zero')) {
+      return 'Enter the amount you paid before sending the proof.';
+    }
+    if (message.contains('Order is not awaiting payment review')) {
+      return 'This order is not accepting a new payment proof right now.';
+    }
     return message;
   }
+
+  String? _nullableString(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    final String text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  static const Set<String> _manualPaymentProviders = <String>{
+    'manual_transfer',
+  };
+
+  static const Set<String> _supportedProofContentTypes = <String>{
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+  };
 
   String? _requireConfigured() {
     if (_client == null) {

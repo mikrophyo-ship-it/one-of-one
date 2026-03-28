@@ -147,6 +147,19 @@ class AdminOrderRecord {
     required this.sellerPayoutStatus,
     required this.royaltyStatus,
     required this.platformFeeStatus,
+    this.manualPaymentReviewStatus,
+    this.manualPaymentMethod,
+    this.payerName,
+    this.payerPhone,
+    this.submittedAmountCents,
+    this.paidAt,
+    this.transactionReference,
+    this.paymentProofBucket,
+    this.paymentProofPath,
+    this.paymentProofUrl,
+    this.paymentReviewNote,
+    this.reviewedAt,
+    this.reviewedByDisplayName,
   });
 
   final String orderId;
@@ -172,6 +185,19 @@ class AdminOrderRecord {
   final String? sellerPayoutStatus;
   final String? royaltyStatus;
   final String? platformFeeStatus;
+  final String? manualPaymentReviewStatus;
+  final String? manualPaymentMethod;
+  final String? payerName;
+  final String? payerPhone;
+  final int? submittedAmountCents;
+  final DateTime? paidAt;
+  final String? transactionReference;
+  final String? paymentProofBucket;
+  final String? paymentProofPath;
+  final String? paymentProofUrl;
+  final String? paymentReviewNote;
+  final DateTime? reviewedAt;
+  final String? reviewedByDisplayName;
 }
 
 class AdminArtistRecord {

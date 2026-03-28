@@ -208,6 +208,298 @@ void main() {
     await _tapRailLabel(tester, 'Audit');
     expect(find.text('seed_audit'), findsOneWidget);
   });
+
+  testWidgets(
+    'admin orders expose a state-aware actions menu with details and proof access',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final _FakeAdminRepository repository = _FakeAdminRepository();
+      final _TestAdminAuthService authService = _TestAdminAuthService(
+        initialSession: _buildSession(
+          id: 'admin_1',
+          email: 'admin@example.com',
+          displayName: 'Admin Operator',
+          username: 'adminoperator',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: AdminShell(
+            authService: authService,
+            adminService: AdminOperationsService(repository: repository),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapRailLabel(tester, 'Orders');
+      await _openActionsMenu(tester, 'order_2');
+
+      expect(find.text('View details'), findsOneWidget);
+      expect(find.text('View proof'), findsOneWidget);
+      expect(find.text('Approve payment'), findsOneWidget);
+      expect(find.text('Reject payment'), findsOneWidget);
+      expect(find.text('Request resubmission'), findsOneWidget);
+      expect(find.text('Cancel order'), findsOneWidget);
+
+      await tester.tap(find.text('View details').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Order OOO-AG-0001'), findsOneWidget);
+      expect(find.text('Order id'), findsOneWidget);
+      expect(find.text('Payment proof'), findsOneWidget);
+      expect(find.text('View proof'), findsWidgets);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'View proof').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Payment proof OOO-AG-0001'), findsOneWidget);
+      expect(find.text('Payment proof preview unavailable'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'admin orders can approve a submitted manual payment proof',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final _FakeAdminRepository repository = _FakeAdminRepository();
+      final _TestAdminAuthService authService = _TestAdminAuthService(
+        initialSession: _buildSession(
+          id: 'admin_1',
+          email: 'admin@example.com',
+          displayName: 'Admin Operator',
+          username: 'adminoperator',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: AdminShell(
+            authService: authService,
+            adminService: AdminOperationsService(repository: repository),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapRailLabel(tester, 'Orders');
+      expect(find.textContaining('Pending manual reviews: 1'), findsOneWidget);
+      expect(find.textContaining('Proof attached'), findsOneWidget);
+      expect(find.text('order_3'), findsNothing);
+
+      await _openActionsMenu(tester, 'order_2');
+      await tester.tap(find.text('View details').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Order OOO-AG-0001'), findsOneWidget);
+      expect(find.text('Method'), findsOneWidget);
+      expect(find.text('WavePay'), findsOneWidget);
+      expect(find.text('Payer'), findsOneWidget);
+      expect(find.text('Avery Collector'), findsWidgets);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Approve payment'));
+      await tester.pumpAndSettle();
+      expect(find.text('Approve payment proof'), findsOneWidget);
+      await _enterField(
+        tester,
+        'Add an internal review note (optional)',
+        'Payment matched.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Payment approved and order moved forward.'), findsOneWidget);
+      await tester.tap(find.text('All orders').last);
+      await tester.pumpAndSettle();
+      expect(find.text('captured / manual_transfer'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'admin can reject payment with a required reason and move the order into rejected history',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final _FakeAdminRepository repository = _FakeAdminRepository();
+      final _TestAdminAuthService authService = _TestAdminAuthService(
+        initialSession: _buildSession(
+          id: 'admin_1',
+          email: 'admin@example.com',
+          displayName: 'Admin Operator',
+          username: 'adminoperator',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: AdminShell(
+            authService: authService,
+            adminService: AdminOperationsService(repository: repository),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapRailLabel(tester, 'Orders');
+      await _openActionsMenu(tester, 'order_2');
+      await tester.tap(find.text('Reject payment').last);
+      await tester.pumpAndSettle();
+
+      final FilledButton rejectButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Reject'),
+      );
+      expect(rejectButton.onPressed, isNull);
+
+      await _enterField(
+        tester,
+        'Reason is required for this action',
+        'Transfer proof does not match the payer details.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Reject'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Payment rejected and order updated.'), findsOneWidget);
+      expect(find.textContaining('Pending manual reviews: 0'), findsOneWidget);
+
+      await tester.tap(find.text('Rejected').last);
+      await tester.pumpAndSettle();
+      expect(find.text('order_2'), findsOneWidget);
+
+      await tester.tap(find.text('Needs review').last);
+      await tester.pumpAndSettle();
+      expect(find.text('No orders match the current filter.'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'admin can request resubmission with a required reason and keep the order operationally open',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final _FakeAdminRepository repository = _FakeAdminRepository();
+      final _TestAdminAuthService authService = _TestAdminAuthService(
+        initialSession: _buildSession(
+          id: 'admin_1',
+          email: 'admin@example.com',
+          displayName: 'Admin Operator',
+          username: 'adminoperator',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: AdminShell(
+            authService: authService,
+            adminService: AdminOperationsService(repository: repository),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapRailLabel(tester, 'Orders');
+      await _openActionsMenu(tester, 'order_2');
+      await tester.tap(find.text('Request resubmission').last);
+      await tester.pumpAndSettle();
+
+      final FilledButton requestButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Request update'),
+      );
+      expect(requestButton.onPressed, isNull);
+
+      await _enterField(
+        tester,
+        'Reason is required for this action',
+        'Please upload a clearer screenshot that includes the transfer reference.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Request update'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Payment resubmission requested.'), findsOneWidget);
+
+      await tester.tap(find.text('Resubmission').last);
+      await tester.pumpAndSettle();
+      expect(find.text('order_2'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'admin can cancel an order with a required reason and move it into cancelled history',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final _FakeAdminRepository repository = _FakeAdminRepository();
+      final _TestAdminAuthService authService = _TestAdminAuthService(
+        initialSession: _buildSession(
+          id: 'admin_1',
+          email: 'admin@example.com',
+          displayName: 'Admin Operator',
+          username: 'adminoperator',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: AdminShell(
+            authService: authService,
+            adminService: AdminOperationsService(repository: repository),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapRailLabel(tester, 'Orders');
+      await tester.tap(find.text('All orders').last);
+      await tester.pumpAndSettle();
+      await _openActionsMenu(tester, 'order_3');
+      await tester.tap(find.text('Cancel order').last);
+      await tester.pumpAndSettle();
+
+      final FilledButton cancelButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Cancel order'),
+      );
+      expect(cancelButton.onPressed, isNull);
+
+      await _enterField(
+        tester,
+        'Reason is required for this action',
+        'Customer requested cancellation before payment was completed.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Cancel order'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Order cancelled and removed from the active review queue.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Cancelled').last);
+      await tester.pumpAndSettle();
+      expect(find.text('order_3'), findsOneWidget);
+    },
+  );
 }
 
 Future<void> _tapRailLabel(WidgetTester tester, String label) async {
@@ -218,6 +510,14 @@ Future<void> _tapRailLabel(WidgetTester tester, String label) async {
 Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openActionsMenu(WidgetTester tester, String orderId) async {
+  final Finder actions =
+      find.byKey(ValueKey<String>('order-actions-$orderId'));
+  await tester.ensureVisible(actions);
+  await tester.tap(actions);
   await tester.pumpAndSettle();
 }
 
@@ -424,6 +724,66 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         sellerPayoutStatus: 'pending',
         royaltyStatus: 'pending',
         platformFeeStatus: 'captured',
+      ),
+      AdminOrderRecord(
+        orderId: 'order_2',
+        listingId: 'listing_1',
+        orderStatus: 'payment_pending',
+        subtotalCents: 180000,
+        totalCents: 180000,
+        createdAt: DateTime(2026, 3, 27),
+        itemId: 'item_1',
+        serialNumber: 'OOO-AG-0001',
+        itemState: 'listed_for_resale',
+        garmentName: 'Collector Tee',
+        artworkTitle: 'Afterglow No. 01',
+        artistName: 'Maya Vale',
+        buyerDisplayName: 'Avery Collector',
+        sellerDisplayName: 'Private Seller',
+        listingStatus: 'active',
+        paymentStatus: 'under_review',
+        paymentProvider: 'manual_transfer',
+        shipmentStatus: null,
+        shipmentCarrier: null,
+        trackingNumber: null,
+        sellerPayoutStatus: null,
+        royaltyStatus: null,
+        platformFeeStatus: null,
+        manualPaymentReviewStatus: 'submitted',
+        manualPaymentMethod: 'WavePay',
+        payerName: 'Avery Collector',
+        payerPhone: '09123456789',
+        submittedAmountCents: 180000,
+        paidAt: DateTime(2026, 3, 27, 10, 30),
+        transactionReference: 'WAVE-REF-123',
+        paymentProofBucket: 'payment-proofs',
+        paymentProofPath: 'collector/order_2/proof.png',
+        paymentProofUrl: 'https://example.test/payment-proof.png',
+      ),
+      AdminOrderRecord(
+        orderId: 'order_3',
+        listingId: 'listing_1',
+        orderStatus: 'payment_pending',
+        subtotalCents: 180000,
+        totalCents: 180000,
+        createdAt: DateTime(2026, 3, 28),
+        itemId: 'item_1',
+        serialNumber: 'OOO-AG-0001',
+        itemState: 'listed_for_resale',
+        garmentName: 'Collector Tee',
+        artworkTitle: 'Afterglow No. 01',
+        artistName: 'Maya Vale',
+        buyerDisplayName: 'Jordan Collector',
+        sellerDisplayName: 'Private Seller',
+        listingStatus: 'active',
+        paymentStatus: 'pending',
+        paymentProvider: 'manual_transfer',
+        shipmentStatus: null,
+        shipmentCarrier: null,
+        trackingNumber: null,
+        sellerPayoutStatus: null,
+        royaltyStatus: null,
+        platformFeeStatus: null,
       ),
     ];
     _artists = <AdminArtistRecord>[
@@ -1083,6 +1443,112 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     return const MarketplaceActionResult<void>(
       success: true,
       message: 'Item status updated by admin control.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminOrderRecord>> reviewManualPayment({
+    required String orderId,
+    required String action,
+    required String note,
+  }) async {
+    final int index = _orders.indexWhere(
+      (AdminOrderRecord order) => order.orderId == orderId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<AdminOrderRecord>(
+        success: false,
+        message: 'Payment proof not found for order.',
+      );
+    }
+
+    if (action != 'approve' && note.trim().isEmpty) {
+      return const MarketplaceActionResult<AdminOrderRecord>(
+        success: false,
+        message: 'Reason is required for this order action.',
+      );
+    }
+
+    final AdminOrderRecord current = _orders[index];
+    final String reviewStatus = switch (action) {
+      'approve' => 'approved',
+      'reject' => 'rejected',
+      'request_resubmission' => 'resubmission_requested',
+      'cancel' => 'cancelled',
+      _ => current.manualPaymentReviewStatus ?? 'submitted',
+    };
+    final String paymentStatus = switch (action) {
+      'approve' => 'captured',
+      'reject' => 'failed',
+      'request_resubmission' => 'rejected',
+      'cancel' => 'failed',
+      _ => current.paymentStatus ?? 'under_review',
+    };
+    final String orderStatus = switch (action) {
+      'approve' => 'paid',
+      'reject' => 'failed',
+      'request_resubmission' => 'payment_pending',
+      'cancel' => 'cancelled',
+      _ => current.orderStatus,
+    };
+
+    _orders[index] = AdminOrderRecord(
+      orderId: current.orderId,
+      listingId: current.listingId,
+      orderStatus: orderStatus,
+      subtotalCents: current.subtotalCents,
+      totalCents: current.totalCents,
+      createdAt: current.createdAt,
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      itemState: current.itemState,
+      garmentName: current.garmentName,
+      artworkTitle: current.artworkTitle,
+      artistName: current.artistName,
+      buyerDisplayName: current.buyerDisplayName,
+      sellerDisplayName: current.sellerDisplayName,
+      listingStatus: current.listingStatus,
+      paymentStatus: paymentStatus,
+      paymentProvider: current.paymentProvider,
+      shipmentStatus: current.shipmentStatus,
+      shipmentCarrier: current.shipmentCarrier,
+      trackingNumber: current.trackingNumber,
+      sellerPayoutStatus: current.sellerPayoutStatus,
+      royaltyStatus: current.royaltyStatus,
+      platformFeeStatus: current.platformFeeStatus,
+      manualPaymentReviewStatus: reviewStatus,
+      manualPaymentMethod: current.manualPaymentMethod,
+      payerName: current.payerName,
+      payerPhone: current.payerPhone,
+      submittedAmountCents: current.submittedAmountCents,
+      paidAt: current.paidAt,
+      transactionReference: current.transactionReference,
+      paymentProofBucket: current.paymentProofBucket,
+      paymentProofPath: current.paymentProofPath,
+      paymentProofUrl: current.paymentProofUrl,
+      paymentReviewNote: note,
+      reviewedAt: DateTime(2026, 3, 28, 9, 0),
+      reviewedByDisplayName: 'Admin Operator',
+    );
+    _addAudit(
+      action: action == 'cancel'
+          ? 'admin_cancel_order'
+          : 'admin_review_manual_payment',
+      entityType: 'order',
+      entityId: orderId,
+      payload: <String, dynamic>{'action': action, 'note': note},
+    );
+    _rebuildSnapshot();
+    return MarketplaceActionResult<AdminOrderRecord>(
+      success: true,
+      message: action == 'approve'
+          ? 'Payment approved and order moved forward.'
+          : action == 'reject'
+          ? 'Payment rejected and order updated.'
+          : action == 'cancel'
+          ? 'Order cancelled and removed from the active review queue.'
+          : 'Payment resubmission requested.',
+      data: _orders[index],
     );
   }
 

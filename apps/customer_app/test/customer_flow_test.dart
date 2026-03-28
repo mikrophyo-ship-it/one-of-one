@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:customer_app/src/authenticity_link_source.dart';
 import 'package:customer_app/src/customer_app.dart';
 import 'package:data/data.dart';
+import 'package:domain/domain.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:services/services.dart';
@@ -356,6 +358,225 @@ void main() {
     expect(find.text('Authorize checkout'), findsNothing);
     expect(find.text('Resell item'), findsNothing);
   });
+
+  testWidgets(
+    'manual payment proof submission shows progress, blocks duplicate submits, and updates status',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final Completer<void> gate = Completer<void>();
+      final _ControlledManualPaymentDemoCatalog repository =
+          _ControlledManualPaymentDemoCatalog(gate: gate);
+      int pickerCalls = 0;
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'buyer_manual',
+          email: 'buyer@example.com',
+          displayName: 'Buyer Collector',
+          username: 'buyercollector',
+        ),
+      );
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const ManualPaymentProvider(),
+          ),
+          authService: authService,
+          paymentProofPicker: () async {
+            pickerCalls += 1;
+            return SelectedPaymentProof(
+              bytes: Uint8List.fromList(<int>[1, 2, 3, 4]),
+              fileName: 'payment-proof.png',
+              contentType: 'image/png',
+              sizeBytes: 4,
+            );
+          },
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(tester, find.text('Start payment'));
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Start payment'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Manual payment verification'), findsOneWidget);
+      expect(find.textContaining('Amount due:'), findsWidgets);
+
+      await _enterField(tester, 'Payer name', 'Buyer Collector');
+      await _enterField(tester, 'Payer phone', '09123456789');
+      await _enterField(tester, 'Paid amount (MMK)', '180000');
+      await _enterField(tester, 'Paid time', '2026-03-28 10:15');
+      await _enterField(
+        tester,
+        'Transaction / reference number (optional)',
+        'WAVE-12345',
+      );
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Upload payment screenshot'),
+      );
+      await tester.pumpAndSettle();
+      expect(pickerCalls, 1);
+      expect(find.text('payment-proof.png'), findsOneWidget);
+      expect(find.text('Payment screenshot selected.'), findsOneWidget);
+
+      final Finder submitButton = find.widgetWithText(
+        FilledButton,
+        'Submit payment proof',
+      );
+      await tester.tap(submitButton);
+      await tester.pump();
+      await tester.tapAt(tester.getCenter(find.text('Submitting...')));
+      await tester.pump();
+
+      expect(repository.submitProofCalls, 1);
+      expect(find.text('Submitting...'), findsOneWidget);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Manual payment verification'), findsNothing);
+      expect(find.text('Payment verification'), findsOneWidget);
+      expect(find.text('under_review'), findsOneWidget);
+      expect(
+        find.text('Payment proof submitted. Admin review is in progress.'),
+        findsOneWidget,
+      );
+      expect(find.text('Method: WavePay'), findsOneWidget);
+      expect(find.text('Payer: Buyer Collector'), findsOneWidget);
+      expect(find.text('Phone: 09123456789'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'manual payment sheet can be cancelled and reopened with a continue payment CTA',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final DemoCatalog repository = DemoCatalog();
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'buyer_manual',
+          email: 'buyer@example.com',
+          displayName: 'Buyer Collector',
+          username: 'buyercollector',
+        ),
+      );
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const ManualPaymentProvider(),
+          ),
+          authService: authService,
+          paymentProofPicker: () async => SelectedPaymentProof(
+            bytes: Uint8List.fromList(<int>[1, 2, 3]),
+            fileName: 'proof.png',
+            contentType: 'image/png',
+            sizeBytes: 3,
+          ),
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(tester, find.text('Start payment'));
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Start payment'));
+      await tester.pumpAndSettle();
+      expect(find.text('Manual payment verification'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Manual payment verification'), findsNothing);
+      expect(find.text('Payment verification'), findsOneWidget);
+      expect(find.text('Continue payment'), findsWidgets);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(tester, find.text('Continue payment'));
+      expect(find.text('Continue payment'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'manual payment proof picker shows clear validation feedback for invalid files',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final DemoCatalog repository = DemoCatalog();
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'buyer_manual',
+          email: 'buyer@example.com',
+          displayName: 'Buyer Collector',
+          username: 'buyercollector',
+        ),
+      );
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const ManualPaymentProvider(),
+          ),
+          authService: authService,
+          paymentProofPicker: () async => SelectedPaymentProof(
+            bytes: Uint8List.fromList(<int>[1, 2, 3]),
+            fileName: 'proof.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 3,
+          ),
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(tester, find.text('Start payment'));
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Start payment'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Upload payment screenshot'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Choose a PNG, JPG, WEBP, or GIF screenshot.'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(FilledButton, 'Submit payment proof'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'comment composer shows posting feedback, blocks duplicate submits, and renders the real commenter name',
@@ -788,6 +1009,42 @@ class _ControlledCommentDemoCatalog extends DemoCatalog {
       success: true,
       message: 'Comment posted to the collectible conversation.',
       data: comment,
+    );
+  }
+}
+
+class _ControlledManualPaymentDemoCatalog extends DemoCatalog {
+  _ControlledManualPaymentDemoCatalog({required this.gate});
+
+  final Completer<void> gate;
+  int submitProofCalls = 0;
+
+  @override
+  Future<MarketplaceActionResult<ManualPaymentOrder>> submitManualPaymentProof({
+    required String orderId,
+    required String paymentMethod,
+    required String payerName,
+    required String payerPhone,
+    required int paidAmountCents,
+    required DateTime paidAt,
+    required String? transactionReference,
+    required Uint8List proofBytes,
+    required String proofFileName,
+    required String proofContentType,
+  }) async {
+    submitProofCalls += 1;
+    await gate.future;
+    return super.submitManualPaymentProof(
+      orderId: orderId,
+      paymentMethod: paymentMethod,
+      payerName: payerName,
+      payerPhone: payerPhone,
+      paidAmountCents: paidAmountCents,
+      paidAt: paidAt,
+      transactionReference: transactionReference,
+      proofBytes: proofBytes,
+      proofFileName: proofFileName,
+      proofContentType: proofContentType,
     );
   }
 }

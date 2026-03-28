@@ -174,4 +174,16 @@ class AdminOperationsService {
       note: note,
     );
   }
+
+  Future<MarketplaceActionResult<AdminOrderRecord>> reviewManualPayment({
+    required String orderId,
+    required String action,
+    required String note,
+  }) {
+    return repository.reviewManualPayment(
+      orderId: orderId,
+      action: action,
+      note: note,
+    );
+  }
 }

@@ -92,4 +92,10 @@ abstract class AdminOperationsRepository {
     required String targetState,
     required String note,
   });
+
+  Future<MarketplaceActionResult<AdminOrderRecord>> reviewManualPayment({
+    required String orderId,
+    required String action,
+    required String note,
+  });
 }

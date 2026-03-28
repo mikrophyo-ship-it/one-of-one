@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:data/data.dart';
 import 'package:domain/domain.dart';
 
@@ -66,6 +68,32 @@ class MarketplaceWorkflowService {
       provider: _paymentProvider.providerKey,
       successUrl: successUrl,
       cancelUrl: cancelUrl,
+    );
+  }
+
+  Future<MarketplaceActionResult<ManualPaymentOrder>> submitManualPaymentProof({
+    required String orderId,
+    required String paymentMethod,
+    required String payerName,
+    required String payerPhone,
+    required int paidAmountCents,
+    required DateTime paidAt,
+    required String? transactionReference,
+    required Uint8List proofBytes,
+    required String proofFileName,
+    required String proofContentType,
+  }) {
+    return _repository.submitManualPaymentProof(
+      orderId: orderId,
+      paymentMethod: paymentMethod,
+      payerName: payerName,
+      payerPhone: payerPhone,
+      paidAmountCents: paidAmountCents,
+      paidAt: paidAt,
+      transactionReference: transactionReference,
+      proofBytes: proofBytes,
+      proofFileName: proofFileName,
+      proofContentType: proofContentType,
     );
   }
 
