@@ -5466,59 +5466,414 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String displayName = controller.currentDisplayName ?? 'Collector';
+    final String secondaryIdentity =
+        controller.currentUserEmail ?? controller.currentUserId;
+    final String initials = displayName
+        .split(RegExp(r'\s+'))
+        .where((String part) => part.isNotEmpty)
+        .take(2)
+        .map((String part) => part.characters.first.toUpperCase())
+        .join();
+    final int listedCount = controller.vaultItems
+        .where((UniqueItem item) => item.state == ItemState.listedForResale)
+        .length;
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: <Widget>[
-        Text(
-          'Collector profile',
-          style: Theme.of(context).textTheme.displaySmall,
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: <Widget>[
+                      Container(
+                        width: 74,
+                        height: 74,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: <Color>[
+                              OneOfOneTheme.gold.withValues(alpha: 0.92),
+                              const Color(0xFF8C7343),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(26),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          initials.isEmpty ? 'C' : initials,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1B1B1B),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.photo_camera_outlined,
+                            size: 16,
+                            color: OneOfOneTheme.gold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          displayName,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: const Color(0xFFF5F0E6),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          secondaryIdentity,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: const Color(0xFFBBB2A6)),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Collector identity active · private member archive',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF9E9588)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _showComingSoon(
+                        context,
+                        'Profile editing will land in a future collector update.',
+                      ),
+                      child: const Text('Edit profile'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonal(
+                      onPressed: () => _showComingSoon(
+                        context,
+                        'Avatar and collector identity settings are preparing for release.',
+                      ),
+                      child: const Text('Identity settings'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: <Widget>[
+                  _VaultSummaryChip(
+                    label: 'Owned pieces',
+                    value: '${controller.vaultItems.length}',
+                  ),
+                  _VaultSummaryChip(
+                    label: 'Saved items',
+                    value: '${controller.savedItemIds.length}',
+                  ),
+                  _VaultSummaryChip(label: 'Listed', value: '$listedCount'),
+                  _VaultSummaryChip(
+                    label: 'Unread updates',
+                    value: '${controller.unreadNotificationCount}',
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            title: Text(controller.currentDisplayName ?? 'Collector'),
-            subtitle: Text(
-              controller.currentUserEmail ?? controller.currentUserId,
+        const SizedBox(height: 28),
+        const _SectionHeader(
+          eyebrow: 'Account & preferences',
+          title: 'Identity and settings',
+          caption:
+              'Future-ready account controls for profile, security, and collector preferences.',
+        ),
+        const SizedBox(height: 16),
+        _ProfileGroupCard(
+          children: <Widget>[
+            _ProfileMenuRow(
+              icon: Icons.manage_accounts_outlined,
+              title: 'Account settings',
+              subtitle:
+                  'Manage profile details, collector handle, and member identity.',
+              onTap: () => _showComingSoon(
+                context,
+                'Account settings are being prepared for a future collector release.',
+              ),
             ),
-            trailing: TextButton(
-              onPressed: () async {
+            _ProfileMenuRow(
+              icon: Icons.notifications_none_rounded,
+              title: 'Notification preferences',
+              subtitle: 'Unread updates: ${controller.unreadNotificationCount}',
+              trailingText: controller.unreadNotificationCount > 0
+                  ? '${controller.unreadNotificationCount}'
+                  : null,
+              onTap: controller.toggleInbox,
+            ),
+            _ProfileMenuRow(
+              icon: Icons.shield_outlined,
+              title: 'Security',
+              subtitle:
+                  'Session, sign-in, and future account protection controls.',
+              onTap: () => _showComingSoon(
+                context,
+                'Security settings are planned for a future collector update.',
+              ),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.lock_outline_rounded,
+              title: 'Privacy settings',
+              subtitle:
+                  'Control how collector identity and ownership visibility evolve.',
+              onTap: () => _showComingSoon(
+                context,
+                'Privacy preferences will arrive with expanded collector controls.',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        const _SectionHeader(
+          eyebrow: 'Collector activity',
+          title: 'History and movement',
+          caption:
+              'Keep personal shortcuts to transactions, saved watchlist pieces, disputes, and activity.',
+        ),
+        const SizedBox(height: 16),
+        _ProfileGroupCard(
+          children: <Widget>[
+            _ProfileMenuRow(
+              icon: Icons.receipt_long_outlined,
+              title: 'Transaction history',
+              subtitle:
+                  'Primary purchase, delivery-gated resale activity, and royalty-aware transfers.',
+              onTap: () => _showComingSoon(
+                context,
+                'Transaction history will expand into a dedicated collector ledger.',
+              ),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.bookmark_border_rounded,
+              title: 'Saved items',
+              subtitle:
+                  '${controller.savedItemIds.length} collectible(s) tracked for watchlist movement.',
+              trailingText: controller.savedItemIds.isEmpty
+                  ? null
+                  : '${controller.savedItemIds.length}',
+              onTap: () => controller.setIndex(3),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.history_rounded,
+              title: 'Activity log',
+              subtitle:
+                  '${controller.activityLog.length} collector activity entry/entries recorded.',
+              onTap: controller.toggleInbox,
+            ),
+            _ProfileMenuRow(
+              icon: Icons.gavel_outlined,
+              title: 'Disputes',
+              subtitle:
+                  'Lost, stolen, and reporting follow-up for protected ownership.',
+              onTap: () => _showComingSoon(
+                context,
+                'Dedicated dispute tracking shortcuts are being prepared.',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        const _SectionHeader(
+          eyebrow: 'Support & session',
+          title: 'Help and access',
+          caption:
+              'Get assistance, review support paths, or close the current collector session.',
+        ),
+        const SizedBox(height: 16),
+        _ProfileGroupCard(
+          children: <Widget>[
+            _ProfileMenuRow(
+              icon: Icons.help_outline_rounded,
+              title: 'Help & support',
+              subtitle:
+                  'Contact support for claims, resale questions, or account help.',
+              onTap: () => _showComingSoon(
+                context,
+                'Support shortcuts will connect into a future collector help flow.',
+              ),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.logout_rounded,
+              title: 'Sign out',
+              subtitle: 'End this collector session on the current device.',
+              onTap: () async {
                 await controller.signOut();
               },
-              child: const Text('Sign out'),
             ),
-          ),
-        ),
-        const Card(
-          child: ListTile(
-            title: Text('Transaction history'),
-            subtitle: Text(
-              'Primary purchase, delivery-gated resale activity, royalty-aware transfers',
-            ),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            title: const Text('Saved items'),
-            subtitle: Text(
-              '${controller.savedItemIds.length} collectible(s) tracked',
-            ),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            title: const Text('Notifications'),
-            subtitle: Text(
-              '${controller.notifications.length} update(s) ready',
-            ),
-          ),
-        ),
-        const Card(
-          child: ListTile(
-            title: Text('Disputes'),
-            subtitle: Text('Lost/stolen reporting and review queue tracking'),
-          ),
+          ],
         ),
       ],
     );
   }
+}
+
+class _ProfileGroupCard extends StatelessWidget {
+  const _ProfileGroupCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        children: children
+            .expand(
+              (Widget child) => <Widget>[
+                child,
+                if (child != children.last)
+                  Divider(
+                    height: 1,
+                    color: Colors.white.withValues(alpha: 0.06),
+                    indent: 18,
+                    endIndent: 18,
+                  ),
+              ],
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
+}
+
+class _ProfileMenuRow extends StatelessWidget {
+  const _ProfileMenuRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.trailingText,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final String? trailingText;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(26),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: OneOfOneTheme.gold, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: const Color(0xFFF3ECDE),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFFB8AF9F),
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (trailingText != null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  trailingText!,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: const Color(0xFFE5D6AF),
+                  ),
+                ),
+              ),
+            const SizedBox(width: 10),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 16,
+              color: Color(0xFF908779),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _showComingSoon(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
