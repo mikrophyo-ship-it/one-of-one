@@ -41,9 +41,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Collect the original.'), findsOneWidget);
+      expect(find.text('Enter the vault.'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Create account'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
       await tester.pumpAndSettle();
 
       await _enterField(tester, 'Display name', 'Avery Collector');
@@ -51,8 +51,8 @@ void main() {
       await _enterField(tester, 'Email', 'avery@example.com');
       await _enterField(tester, 'Password', 'password123');
       final Finder createAccountButton = find.widgetWithText(
-        ElevatedButton,
-        'Create Collector Account',
+        FilledButton,
+        'Create collector account',
       );
       await tester.ensureVisible(createAccountButton);
       await tester.tap(createAccountButton);
@@ -243,11 +243,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
     await _enterField(tester, 'Email', 'sign_in@example.com');
     await _enterField(tester, 'Password', 'password123');
-    final Finder signInButton = find.widgetWithText(ElevatedButton, 'Sign In');
+    final Finder signInButton = find.widgetWithText(
+      FilledButton,
+      'Enter vault',
+    );
     await tester.ensureVisible(signInButton);
     await tester.tap(signInButton);
     await tester.pumpAndSettle();
@@ -335,7 +338,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Collect the original.'), findsOneWidget);
+      expect(find.text('Enter the vault.'), findsOneWidget);
     },
   );
 

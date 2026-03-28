@@ -1646,162 +1646,348 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     final bool isBusy = widget.controller.isBusy;
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: <Color>[
-              Color(0xFF060606),
-              Color(0xFF191109),
-              Color(0xFF060606),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Card(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(color: Color(0xFF060606)),
+        child: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      const Color(0xFF060606),
+                      const Color(0xFF1A140D).withValues(alpha: 0.96),
+                      const Color(0xFF090909),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: -80,
+              right: -40,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: <Color>[
+                      OneOfOneTheme.gold.withValues(alpha: 0.16),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -90,
+              bottom: 80,
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: <Color>[
+                      const Color(0xFF8A6E3D).withValues(alpha: 0.12),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.14,
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Form(
-                      key: _formKey,
-                      autovalidateMode: AutovalidateMode.onUserInteraction,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            'Collect the original.',
-                            style: Theme.of(context).textTheme.displaySmall,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _headlineCopy(),
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          const SizedBox(height: 20),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: <Widget>[
-                              _modeButton(context, AuthMode.signIn, 'Sign in'),
-                              _modeButton(
-                                context,
-                                AuthMode.signUp,
-                                'Create account',
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 26,
+                      vertical: 44,
+                    ),
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      runAlignment: WrapAlignment.spaceBetween,
+                      spacing: 18,
+                      runSpacing: 16,
+                      children: List<Widget>.generate(
+                        18,
+                        (int index) => Text(
+                          'OOO-${(index + 1).toString().padLeft(3, '0')}',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: const Color(0xFFE0C88A),
+                                letterSpacing: 2.4,
                               ),
-                              _modeButton(
-                                context,
-                                AuthMode.resetPassword,
-                                'Reset password',
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          if (widget.controller.errorMessage != null)
-                            _MessageCard(
-                              icon: Icons.error_outline,
-                              message: widget.controller.errorMessage!,
-                            ),
-                          if (widget.controller.statusMessage != null)
-                            _MessageCard(
-                              icon: Icons.verified_outlined,
-                              message: widget.controller.statusMessage!,
-                            ),
-                          if (!widget.controller.authConfigured)
-                            const _MessageCard(
-                              icon: Icons.settings_ethernet,
-                              message:
-                                  'Supabase configuration is required for real collector authentication.',
-                            ),
-                          if (_mode == AuthMode.signUp) ...<Widget>[
-                            TextFormField(
-                              controller: _displayNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Display name',
-                              ),
-                              textInputAction: TextInputAction.next,
-                              validator: (String? value) => validateRequired(
-                                value ?? '',
-                                field: 'Display name',
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _usernameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Username',
-                              ),
-                              textInputAction: TextInputAction.next,
-                              validator: (String? value) =>
-                                  validateUsername(value ?? ''),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          TextFormField(
-                            controller: _emailController,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                            ),
-                            keyboardType: TextInputType.emailAddress,
-                            textInputAction: _mode == AuthMode.resetPassword
-                                ? TextInputAction.done
-                                : TextInputAction.next,
-                            validator: (String? value) =>
-                                validateEmail(value ?? ''),
-                          ),
-                          if (_mode != AuthMode.resetPassword) ...<Widget>[
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _passwordController,
-                              decoration: InputDecoration(
-                                labelText: 'Password',
-                                suffixIcon: IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  },
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                  ),
-                                ),
-                              ),
-                              obscureText: _obscurePassword,
-                              textInputAction: TextInputAction.done,
-                              validator: (String? value) =>
-                                  validatePassword(value ?? ''),
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed:
-                                  isBusy || !widget.controller.authConfigured
-                                  ? null
-                                  : _submit,
-                              child: Text(_primaryActionLabel()),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _footnoteCopy(),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 470),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111111).withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(34),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.07),
+                        ),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.28),
+                            blurRadius: 40,
+                            offset: const Offset(0, 20),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+                        child: Form(
+                          key: _formKey,
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'ONE OF ONE',
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: const Color(0xFFE0C88A),
+                                      letterSpacing: 2.8,
+                                    ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                _heroTitle(),
+                                style: Theme.of(context).textTheme.displaySmall
+                                    ?.copyWith(
+                                      color: const Color(0xFFF5F0E6),
+                                      height: 1.0,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _headlineCopy(),
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: const Color(0xFFC9C0B3),
+                                      height: 1.5,
+                                    ),
+                              ),
+                              const SizedBox(height: 24),
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.04),
+                                  borderRadius: BorderRadius.circular(22),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.06),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: _modeButton(
+                                        context,
+                                        AuthMode.signIn,
+                                        'Sign in',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _modeButton(
+                                        context,
+                                        AuthMode.signUp,
+                                        'Create account',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _mode = AuthMode.resetPassword;
+                                    });
+                                  },
+                                  child: Text(
+                                    _mode == AuthMode.resetPassword
+                                        ? 'Back to sign in'
+                                        : 'Forgot password?',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (widget.controller.errorMessage != null)
+                                _MessageCard(
+                                  icon: Icons.error_outline,
+                                  message: widget.controller.errorMessage!,
+                                ),
+                              if (widget.controller.statusMessage != null)
+                                _MessageCard(
+                                  icon: Icons.verified_outlined,
+                                  message: widget.controller.statusMessage!,
+                                ),
+                              if (!widget.controller.authConfigured)
+                                const _MessageCard(
+                                  icon: Icons.lock_outline,
+                                  message:
+                                      'Collector access is available once the authentication environment is configured.',
+                                ),
+                              if (_mode == AuthMode.signUp) ...<Widget>[
+                                _LuxuryTextField(
+                                  child: TextFormField(
+                                    controller: _displayNameController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Display name',
+                                    ),
+                                    textInputAction: TextInputAction.next,
+                                    validator: (String? value) =>
+                                        validateRequired(
+                                          value ?? '',
+                                          field: 'Display name',
+                                        ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _LuxuryTextField(
+                                  child: TextFormField(
+                                    controller: _usernameController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Username',
+                                    ),
+                                    textInputAction: TextInputAction.next,
+                                    validator: (String? value) =>
+                                        validateUsername(value ?? ''),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              _LuxuryTextField(
+                                child: TextFormField(
+                                  controller: _emailController,
+                                  decoration: InputDecoration(
+                                    labelText: _mode == AuthMode.resetPassword
+                                        ? 'Collector email'
+                                        : 'Email',
+                                  ),
+                                  keyboardType: TextInputType.emailAddress,
+                                  textInputAction:
+                                      _mode == AuthMode.resetPassword
+                                      ? TextInputAction.done
+                                      : TextInputAction.next,
+                                  validator: (String? value) =>
+                                      validateEmail(value ?? ''),
+                                ),
+                              ),
+                              if (_mode != AuthMode.resetPassword) ...<Widget>[
+                                const SizedBox(height: 12),
+                                _LuxuryTextField(
+                                  child: TextFormField(
+                                    controller: _passwordController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Password',
+                                      suffixIcon: IconButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _obscurePassword =
+                                                !_obscurePassword;
+                                          });
+                                        },
+                                        icon: Icon(
+                                          _obscurePassword
+                                              ? Icons.visibility_off
+                                              : Icons.visibility,
+                                        ),
+                                      ),
+                                    ),
+                                    obscureText: _obscurePassword,
+                                    textInputAction: TextInputAction.done,
+                                    validator: (String? value) =>
+                                        validatePassword(value ?? ''),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 22),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton(
+                                  onPressed:
+                                      isBusy ||
+                                          !widget.controller.authConfigured
+                                      ? null
+                                      : _submit,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFFE0C88A),
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                  ),
+                                  child: Text(_primaryActionLabel()),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.04),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                  ),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.verified_outlined,
+                                      color: OneOfOneTheme.gold,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        _footnoteCopy(),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: const Color(0xFFB8AF9F),
+                                              height: 1.45,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1809,52 +1995,86 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _modeButton(BuildContext context, AuthMode mode, String label) {
     final bool selected = _mode == mode;
-    return OutlinedButton(
+    return FilledButton(
       onPressed: () {
         setState(() {
           _mode = mode;
         });
       },
-      style: OutlinedButton.styleFrom(
+      style: FilledButton.styleFrom(
         backgroundColor: selected
-            ? OneOfOneTheme.gold.withValues(alpha: 0.12)
+            ? const Color(0xFFE0C88A)
             : Colors.transparent,
+        foregroundColor: selected ? Colors.black : const Color(0xFFE3D9C8),
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       child: Text(label, style: Theme.of(context).textTheme.labelLarge),
     );
   }
 
+  String _heroTitle() {
+    switch (_mode) {
+      case AuthMode.signIn:
+        return 'Enter the vault.';
+      case AuthMode.signUp:
+        return 'Claim authenticated ownership.';
+      case AuthMode.resetPassword:
+        return 'Restore collector access.';
+    }
+  }
+
   String _headlineCopy() {
     switch (_mode) {
       case AuthMode.signIn:
-        return 'Sign in to claim ownership, access your vault, and resell authenticated pieces on-platform only.';
+        return 'Access verified collectibles, protected resale, and your private collector archive.';
       case AuthMode.signUp:
-        return 'Create your collector account to bind provenance, ownership certificates, and future resale activity to you.';
+        return 'Create your collector identity to hold provenance, ownership, and protected market movement in one place.';
       case AuthMode.resetPassword:
-        return 'Reset your password to regain access to your verified collection and dispute tools.';
+        return 'Reset your password to return to your authenticated archive and verified ownership history.';
     }
   }
 
   String _primaryActionLabel() {
     switch (_mode) {
       case AuthMode.signIn:
-        return 'Sign In';
+        return 'Enter vault';
       case AuthMode.signUp:
-        return 'Create Collector Account';
+        return 'Create collector account';
       case AuthMode.resetPassword:
-        return 'Send Reset Email';
+        return 'Send reset link';
     }
   }
 
   String _footnoteCopy() {
     switch (_mode) {
       case AuthMode.signIn:
-        return 'Ownership actions stay server-authoritative and are validated by Supabase before any collectible state changes.';
+        return 'Verified collectibles only. Authenticated ownership, protected resale, and platform-validated transfers.';
       case AuthMode.signUp:
-        return 'Profile bootstrap runs after account creation so claim, listing, checkout, and dispute RPCs have a verified collector identity.';
+        return 'Collector identity keeps ownership, provenance, and future resale access tied to you.';
       case AuthMode.resetPassword:
-        return 'Production deployments may set a dedicated password-reset redirect URL for mobile deep links.';
+        return 'Access recovery keeps your verified collection and collector history protected.';
     }
+  }
+}
+
+class _LuxuryTextField extends StatelessWidget {
+  const _LuxuryTextField({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF101010),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: child,
+    );
   }
 }
 
