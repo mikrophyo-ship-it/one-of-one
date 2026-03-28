@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:domain/domain.dart';
@@ -467,6 +468,34 @@ class DemoCatalog implements MarketplaceRepository {
       message: 'Demo notifications ready.',
       data: List<CollectorNotification>.unmodifiable(_notifications),
     );
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> markNotificationsRead({
+    required List<String> notificationIds,
+  }) async {
+    final Set<String> ids = notificationIds.toSet();
+    for (int i = 0; i < _notifications.length; i += 1) {
+      final CollectorNotification notification = _notifications[i];
+      if (ids.contains(notification.id)) {
+        _notifications[i] = CollectorNotification(
+          id: notification.id,
+          title: notification.title,
+          body: notification.body,
+          createdAt: notification.createdAt,
+          read: true,
+        );
+      }
+    }
+    return const MarketplaceActionResult<void>(
+      success: true,
+      message: 'Demo notifications marked as read.',
+    );
+  }
+
+  @override
+  Stream<void> watchCustomerData({required String userId}) {
+    return const Stream<void>.empty();
   }
 
   @override

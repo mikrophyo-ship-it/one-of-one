@@ -66,6 +66,10 @@ abstract class MarketplaceRepository {
   Future<MarketplaceActionResult<List<SavedCollectible>>> fetchSavedItems();
   Future<MarketplaceActionResult<List<CollectorNotification>>>
   fetchNotifications();
+  Future<MarketplaceActionResult<void>> markNotificationsRead({
+    required List<String> notificationIds,
+  });
+  Stream<void> watchCustomerData({required String userId});
   Future<MarketplaceActionResult<void>> saveItem({required String itemId});
   Future<MarketplaceActionResult<void>> removeSavedItem({required String itemId});
   Future<MarketplaceActionResult<ItemComment>> addItemComment({

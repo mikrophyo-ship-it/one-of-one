@@ -163,6 +163,16 @@ class MarketplaceWorkflowService {
     return _repository.fetchNotifications();
   }
 
+  Future<MarketplaceActionResult<void>> markNotificationsRead({
+    required List<String> notificationIds,
+  }) {
+    return _repository.markNotificationsRead(notificationIds: notificationIds);
+  }
+
+  Stream<void> watchCustomerData({required String userId}) {
+    return _repository.watchCustomerData(userId: userId);
+  }
+
   Future<MarketplaceActionResult<void>> saveItem({required String itemId}) {
     return _repository.saveItem(itemId: itemId);
   }

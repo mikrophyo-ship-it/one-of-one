@@ -1,5 +1,6 @@
 // ignore_for_file: unnecessary_non_null_assertion
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:domain/domain.dart';
@@ -435,6 +436,62 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
         message: _friendlyMessage(error),
       );
     }
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> markNotificationsRead({
+    required List<String> notificationIds,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(success: false, message: configError);
+    }
+    if (notificationIds.isEmpty) {
+      return const MarketplaceActionResult<void>(
+        success: true,
+        message: 'No notifications needed updating.',
+      );
+    }
+
+    try {
+      await _client!.rpc(
+        'mark_my_notifications_read',
+        params: <String, dynamic>{'p_notification_ids': notificationIds},
+      );
+      final Set<String> ids = notificationIds.toSet();
+      _notifications = _notifications
+          .map((CollectorNotification notification) {
+            if (!ids.contains(notification.id) || notification.read) {
+              return notification;
+            }
+            return CollectorNotification(
+              id: notification.id,
+              title: notification.title,
+              body: notification.body,
+              createdAt: notification.createdAt,
+              read: true,
+            );
+          })
+          .toList(growable: false);
+      return const MarketplaceActionResult<void>(
+        success: true,
+        message: 'Notifications marked as read.',
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error),
+      );
+    }
+  }
+
+  @override
+  Stream<void> watchCustomerData({required String userId}) {
+    final String? configError = _requireConfigured();
+    if (configError != null || userId.trim().isEmpty) {
+      return const Stream<void>.empty();
+    }
+    return Stream<void>.periodic(const Duration(seconds: 15), (_) {});
   }
 
   @override
