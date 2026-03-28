@@ -316,6 +316,46 @@ void main() {
       expect(find.text('Collect the original.'), findsOneWidget);
     },
   );
+
+  testWidgets('vault owners cannot authorize checkout on their own resale item', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final DemoCatalog repository = DemoCatalog();
+    final _TestAuthService authService = _TestAuthService(
+      initialSession: _buildSession(
+        id: 'user_collector_1',
+        email: 'owner@example.com',
+        displayName: 'Owner Collector',
+        username: 'ownercollector',
+      ),
+    );
+
+    await tester.pumpWidget(
+      OneOfOneCustomerApp(
+        repository: repository,
+        workflowService: MarketplaceWorkflowService(
+          repository: repository,
+          paymentProvider: const MockPaymentProvider(),
+        ),
+        authService: authService,
+        enableCameraScanner: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapNav(tester, 'Vault');
+    await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+    await tester.pumpAndSettle();
+    await _scrollUntilVisible(tester, find.text('Report dispute'));
+
+    expect(find.text('Authorize checkout'), findsNothing);
+    expect(find.text('Resell item'), findsNothing);
+  });
 }
 
 Future<void> _tapNav(WidgetTester tester, String label) async {

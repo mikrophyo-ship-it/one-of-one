@@ -1018,8 +1018,8 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       state: itemStateFromKey(row['state'].toString()),
       currentOwnerUserId: currentUserId(),
       claimCodeConsumed: true,
-      askingPrice:
-          (row['asking_price_cents'] as num?)?.toInt() ?? fallback?.askingPrice,
+      askingPrice: (row['asking_price_cents'] as num?)?.toInt(),
+      imageUrls: fallback?.imageUrls ?? const <String>[],
     );
   }
 

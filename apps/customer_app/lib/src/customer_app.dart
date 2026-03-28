@@ -1800,7 +1800,10 @@ class ItemDetailScreen extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: <Widget>[
-              if (item.askingPrice != null && !item.state.isRestricted)
+              if (item.askingPrice != null &&
+                  item.state == ItemState.listedForResale &&
+                  item.currentOwnerUserId != controller.currentUserId &&
+                  !item.state.isRestricted)
                 ElevatedButton(
                   onPressed: () async {
                     final String message = await controller.buyResale(
@@ -1815,6 +1818,8 @@ class ItemDetailScreen extends StatelessWidget {
                   child: const Text('Authorize checkout'),
                 ),
               if (item.currentOwnerUserId == controller.currentUserId &&
+                  (item.state == ItemState.claimed ||
+                      item.state == ItemState.transferred) &&
                   !item.state.isRestricted)
                 OutlinedButton(
                   onPressed: () async {
