@@ -234,14 +234,22 @@ begin
   values (p_item_id)
   on conflict (item_id) do nothing;
 
+  select ui.*
+  into v_item
+  from public.unique_items ui
+  where ui.id = p_item_id
+  for update;
+
+  if not found then
+    raise exception 'Inventory item not found';
+  end if;
+
   select
-    ui.*,
     ar.display_name,
     aw.title,
     gp.name,
     authrec.authenticity_status
   into
-    v_item,
     v_artist_name,
     v_artwork_title,
     v_garment_name,
@@ -251,12 +259,7 @@ begin
   join public.artworks aw on aw.id = ui.artwork_id
   join public.garment_products gp on gp.id = ui.garment_product_id
   left join public.authenticity_records authrec on authrec.unique_item_id = ui.id
-  where ui.id = p_item_id
-  for update of ui;
-
-  if not found then
-    raise exception 'Inventory item not found';
-  end if;
+  where ui.id = p_item_id;
 
   select materials.hidden_claim_code_plaintext
   into v_claim_code
