@@ -117,9 +117,8 @@ class AdminOperationsService {
     );
   }
 
-  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
-    required String itemId,
-  }) {
+  Future<MarketplaceActionResult<AdminInventoryRecord>>
+  createAuthenticityRecord({required String itemId}) {
     return repository.createAuthenticityRecord(itemId: itemId);
   }
 
@@ -161,6 +160,12 @@ class AdminOperationsService {
       fileName: fileName,
       contentType: contentType,
     );
+  }
+
+  Future<MarketplaceActionResult<void>> removeInventoryImage({
+    required String itemId,
+  }) {
+    return repository.removeInventoryImage(itemId: itemId);
   }
 
   Future<MarketplaceActionResult<void>> flagItemStatus({

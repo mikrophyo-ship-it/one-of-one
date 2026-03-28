@@ -18,6 +18,8 @@ class CatalogPanel extends StatelessWidget {
     required this.onRevealClaimCode,
     required this.onGenerateClaimPacket,
     required this.onUploadInventoryImage,
+    required this.onRemoveInventoryImage,
+    required this.busyInventoryItemIds,
     super.key,
   });
 
@@ -28,11 +30,14 @@ class CatalogPanel extends StatelessWidget {
   final VoidCallback onCreateArtist;
   final VoidCallback onCreateArtwork;
   final VoidCallback onCreateInventory;
-  final Future<void> Function(AdminInventoryRecord item) onCreateAuthenticityRecord;
+  final Future<void> Function(AdminInventoryRecord item)
+  onCreateAuthenticityRecord;
   final Future<void> Function(AdminInventoryRecord item) onUpsertListing;
   final Future<void> Function(AdminInventoryRecord item) onRevealClaimCode;
   final Future<void> Function(AdminInventoryRecord item) onGenerateClaimPacket;
   final Future<void> Function(AdminInventoryRecord item) onUploadInventoryImage;
+  final Future<void> Function(AdminInventoryRecord item) onRemoveInventoryImage;
+  final Set<String> busyInventoryItemIds;
 
   static final ButtonStyle _compactActionStyle = FilledButton.styleFrom(
     minimumSize: const Size(0, 34),
@@ -206,9 +211,13 @@ class CatalogPanel extends StatelessWidget {
                         DataColumn(label: Text('QR')),
                         DataColumn(label: Text('Claim')),
                         DataColumn(label: Text('Packet')),
+                        DataColumn(label: Text('Photo')),
                         DataColumn(label: Text('Actions')),
                       ],
                       rows: inventory.map((AdminInventoryRecord item) {
+                        final bool photoBusy = busyInventoryItemIds.contains(
+                          item.itemId,
+                        );
                         return DataRow(
                           cells: <DataCell>[
                             DataCell(Text(item.serialNumber)),
@@ -282,8 +291,40 @@ class CatalogPanel extends StatelessWidget {
                               ),
                             ),
                             DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Icon(
+                                    item.hasEditorialImage
+                                        ? Icons.image_rounded
+                                        : Icons.image_not_supported_outlined,
+                                    size: 18,
+                                    color: item.hasEditorialImage
+                                        ? const Color(0xFFD4AF37)
+                                        : Colors.white54,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    item.hasEditorialImage
+                                        ? 'Photo attached'
+                                        : 'No photo',
+                                  ),
+                                  if (photoBusy) ...<Widget>[
+                                    const SizedBox(width: 8),
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            DataCell(
                               SizedBox(
-                                width: 320,
+                                width: 360,
                                 child: Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
@@ -295,11 +336,32 @@ class CatalogPanel extends StatelessWidget {
                                             onCreateAuthenticityRecord(item),
                                         child: const Text('Link'),
                                       ),
-                                    IconButton(
-                                      tooltip: 'Upload editorial photo',
-                                      onPressed: () => onUploadInventoryImage(item),
-                                      icon: const Icon(Icons.add_a_photo_outlined),
-                                    ),
+                                    if (!item.hasEditorialImage)
+                                      FilledButton.tonalIcon(
+                                        style: _compactActionStyle,
+                                        onPressed: photoBusy
+                                            ? null
+                                            : () =>
+                                                  onUploadInventoryImage(item),
+                                        icon: const Icon(
+                                          Icons.add_a_photo_outlined,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Upload photo'),
+                                      ),
+                                    if (item.hasEditorialImage)
+                                      FilledButton.tonalIcon(
+                                        style: _compactActionStyle,
+                                        onPressed: photoBusy
+                                            ? null
+                                            : () =>
+                                                  onRemoveInventoryImage(item),
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Remove photo'),
+                                      ),
                                     if (item.hasAuthenticityRecord &&
                                         item.listingStatus == null)
                                       FilledButton.tonal(
@@ -318,13 +380,15 @@ class CatalogPanel extends StatelessWidget {
                                     if (item.claimCodeRevealState == 'ready')
                                       FilledButton.tonal(
                                         style: _compactActionStyle,
-                                        onPressed: () => onRevealClaimCode(item),
+                                        onPressed: () =>
+                                            onRevealClaimCode(item),
                                         child: const Text('Reveal'),
                                       ),
                                     if (item.claimPacketReady)
                                       FilledButton.tonal(
                                         style: _compactActionStyle,
-                                        onPressed: () => onGenerateClaimPacket(item),
+                                        onPressed: () =>
+                                            onGenerateClaimPacket(item),
                                         child: const Text('Packet'),
                                       ),
                                     if (item.listingStatus == 'active')

@@ -57,7 +57,8 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       final List<dynamic> artworkRows =
           (await _client!.rpc('get_admin_artwork_directory')) as List<dynamic>;
       final List<dynamic> inventoryRows =
-          (await _client!.rpc('get_admin_inventory_directory')) as List<dynamic>;
+          (await _client!.rpc('get_admin_inventory_directory'))
+              as List<dynamic>;
       final List<dynamic> garmentProductRows =
           (await _client!.rpc('get_admin_garment_product_directory'))
               as List<dynamic>;
@@ -100,7 +101,9 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
             .map((dynamic row) => _artworkFromRow(row as Map<String, dynamic>))
             .toList(),
         inventory: inventoryRows
-            .map((dynamic row) => _inventoryFromRow(row as Map<String, dynamic>))
+            .map(
+              (dynamic row) => _inventoryFromRow(row as Map<String, dynamic>),
+            )
             .toList(),
         garmentProducts: garmentProductRows
             .map(
@@ -368,9 +371,8 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
   }
 
   @override
-  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
-    required String itemId,
-  }) async {
+  Future<MarketplaceActionResult<AdminInventoryRecord>>
+  createAuthenticityRecord({required String itemId}) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
       return MarketplaceActionResult<AdminInventoryRecord>(
@@ -451,10 +453,15 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     }
 
     try {
-      final Map<String, dynamic> row = (await _client!.rpc(
-        'admin_reveal_item_claim_code',
-        params: <String, dynamic>{'p_item_id': itemId, 'p_reason': reason},
-      )) as Map<String, dynamic>;
+      final Map<String, dynamic> row =
+          (await _client!.rpc(
+                'admin_reveal_item_claim_code',
+                params: <String, dynamic>{
+                  'p_item_id': itemId,
+                  'p_reason': reason,
+                },
+              ))
+              as Map<String, dynamic>;
       await refresh();
       return MarketplaceActionResult<AdminClaimPacketData>(
         success: true,
@@ -483,10 +490,15 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     }
 
     try {
-      final Map<String, dynamic> row = (await _client!.rpc(
-        'admin_generate_claim_packet',
-        params: <String, dynamic>{'p_item_id': itemId, 'p_reason': reason},
-      )) as Map<String, dynamic>;
+      final Map<String, dynamic> row =
+          (await _client!.rpc(
+                'admin_generate_claim_packet',
+                params: <String, dynamic>{
+                  'p_item_id': itemId,
+                  'p_reason': reason,
+                },
+              ))
+              as Map<String, dynamic>;
       await refresh();
       return MarketplaceActionResult<AdminClaimPacketData>(
         success: true,
@@ -533,14 +545,13 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
         'inventory/$itemId/${DateTime.now().millisecondsSinceEpoch}_$sanitizedName';
 
     try {
-      await _client!.storage.from('garment-editorial').uploadBinary(
-        storagePath,
-        bytes,
-        fileOptions: FileOptions(
-          contentType: contentType,
-          upsert: false,
-        ),
-      );
+      await _client!.storage
+          .from('garment-editorial')
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(contentType: contentType, upsert: false),
+          );
       await _client!.rpc(
         'admin_attach_item_media_asset',
         params: <String, dynamic>{
@@ -555,15 +566,96 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
         success: true,
         message: 'Editorial image uploaded for the collectible.',
       );
+    } on PostgrestException catch (error) {
+      try {
+        await _client!.storage.from('garment-editorial').remove(<String>[
+          storagePath,
+        ]);
+      } on StorageException {
+        // Keep the original RPC failure for the operator; storage cleanup can be retried manually.
+      }
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
     } on StorageException catch (error) {
       return MarketplaceActionResult<void>(
         success: false,
         message: error.toString(),
       );
+    } catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: error.toString(),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> removeInventoryImage({
+    required String itemId,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    final MarketplaceActionResult<void> accessCheck =
+        await _assertAdminAccess();
+    if (!accessCheck.success) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: accessCheck.message,
+      );
+    }
+
+    try {
+      final List<dynamic> deletedRows =
+          (await _client!.rpc(
+                'admin_remove_item_media_assets',
+                params: <String, dynamic>{'p_item_id': itemId},
+              ))
+              as List<dynamic>;
+
+      final Map<String, List<String>> pathsByBucket = <String, List<String>>{};
+      for (final dynamic row in deletedRows) {
+        final Map<String, dynamic> data = row as Map<String, dynamic>;
+        final String? bucket = _nullableString(data['storage_bucket']);
+        final String? path = _nullableString(data['storage_path']);
+        if (bucket == null || path == null) {
+          continue;
+        }
+        pathsByBucket.putIfAbsent(bucket, () => <String>[]).add(path);
+      }
+
+      String? cleanupWarning;
+      for (final MapEntry<String, List<String>> entry
+          in pathsByBucket.entries) {
+        try {
+          await _client!.storage.from(entry.key).remove(entry.value);
+        } on StorageException {
+          cleanupWarning =
+              'Catalog photo removed, but storage cleanup needs a follow-up check.';
+        }
+      }
+
+      return MarketplaceActionResult<void>(
+        success: true,
+        message:
+            cleanupWarning ?? 'Editorial image removed from the collectible.',
+      );
     } on PostgrestException catch (error) {
       return MarketplaceActionResult<void>(
         success: false,
         message: _friendlyMessage(error.message),
+      );
+    } catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: error.toString(),
       );
     }
   }
@@ -906,6 +998,7 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       claimPacketReady: row['claim_packet_ready'] == true,
       claimCodeRevealState:
           _nullableString(row['claim_code_reveal_state']) ?? 'unavailable',
+      hasEditorialImage: row['has_editorial_image'] == true,
     );
   }
 
@@ -1009,7 +1102,8 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
   AdminArtistRecord? _findArtist(String? artistId, String slug) {
     for (final AdminArtistRecord artist
         in _snapshot?.artists ?? const <AdminArtistRecord>[]) {
-      if ((artistId != null && artist.artistId == artistId) || artist.slug == slug) {
+      if ((artistId != null && artist.artistId == artistId) ||
+          artist.slug == slug) {
         return artist;
       }
     }
@@ -1078,6 +1172,12 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     if (message.contains('Listing already exists for this item')) {
       return 'This item already has an operational listing record.';
     }
+    if (message.contains('Editorial image already attached for this item')) {
+      return 'This collectible already has an editorial photo. Remove it before uploading a replacement.';
+    }
+    if (message.contains('Editorial image not found for this item')) {
+      return 'No editorial photo is attached to this collectible yet.';
+    }
     if (message.contains('Create authenticity record first')) {
       return 'Create the item authenticity record before publishing it to customers or preparing a claim packet.';
     }
@@ -1102,7 +1202,9 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     if (message.contains('Secure claim material unavailable for this item')) {
       return 'This item does not have secure claim packet material yet. Reissue the claim packet only for inventory created after the claim-ops migration is applied.';
     }
-    if (message.contains('Secure claim material is out of sync for this item')) {
+    if (message.contains(
+      'Secure claim material is out of sync for this item',
+    )) {
       return 'Secure claim material for this item is out of sync and needs an admin migration review before it can be revealed.';
     }
     if (message.contains('Unsupported listing status')) {
@@ -1120,7 +1222,9 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     if (message.contains('Order cannot be cancelled from its current state')) {
       return 'This order is already closed and cannot be cancelled from the queue.';
     }
-    if (message.contains('Paid orders cannot be cancelled from this review flow')) {
+    if (message.contains(
+      'Paid orders cannot be cancelled from this review flow',
+    )) {
       return 'Use the downstream fulfillment or refund workflow for orders that are already paid.';
     }
     if (message.contains('Payment amount does not match order total')) {

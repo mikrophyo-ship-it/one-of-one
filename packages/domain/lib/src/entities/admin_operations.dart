@@ -257,6 +257,7 @@ class AdminInventoryRecord {
     required this.qrReady,
     required this.claimPacketReady,
     required this.claimCodeRevealState,
+    required this.hasEditorialImage,
   });
 
   final String itemId;
@@ -276,6 +277,7 @@ class AdminInventoryRecord {
   final bool qrReady;
   final bool claimPacketReady;
   final String claimCodeRevealState;
+  final bool hasEditorialImage;
 }
 
 class AdminClaimPacketData {

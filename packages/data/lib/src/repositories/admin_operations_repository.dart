@@ -60,9 +60,8 @@ abstract class AdminOperationsRepository {
     required String itemState,
   });
 
-  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
-    required String itemId,
-  });
+  Future<MarketplaceActionResult<AdminInventoryRecord>>
+  createAuthenticityRecord({required String itemId});
 
   Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryListing({
     required String itemId,
@@ -85,6 +84,10 @@ abstract class AdminOperationsRepository {
     required Uint8List bytes,
     required String fileName,
     required String contentType,
+  });
+
+  Future<MarketplaceActionResult<void>> removeInventoryImage({
+    required String itemId,
   });
 
   Future<MarketplaceActionResult<void>> flagItemStatus({

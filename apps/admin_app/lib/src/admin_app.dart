@@ -112,6 +112,7 @@ class _AdminShellState extends State<AdminShell> {
   int _index = 0;
   bool _authBusy = false;
   bool _refreshing = false;
+  final Set<String> _catalogMediaBusyItemIds = <String>{};
   String? _bannerMessage;
   bool _bannerIsError = false;
   AdminOperationsSnapshot? _snapshot;
@@ -211,6 +212,8 @@ class _AdminShellState extends State<AdminShell> {
         onRevealClaimCode: _revealClaimCode,
         onGenerateClaimPacket: _generateClaimPacket,
         onUploadInventoryImage: _uploadInventoryImage,
+        onRemoveInventoryImage: _removeInventoryImage,
+        busyInventoryItemIds: _catalogMediaBusyItemIds,
       ),
       AuditPanel(audits: _snapshot?.audits ?? const <AdminAuditRecord>[]),
       SettingsPanel(settings: _snapshot?.settings, onSave: _saveSettings),
@@ -479,8 +482,8 @@ class _AdminShellState extends State<AdminShell> {
     if (input == null) {
       return;
     }
-    final MarketplaceActionResult<AdminArtistRecord> result = await _adminService
-        .upsertArtist(
+    final MarketplaceActionResult<AdminArtistRecord> result =
+        await _adminService.upsertArtist(
           displayName: input.displayName,
           slug: input.slug,
           royaltyBps: input.royaltyBps,
@@ -505,8 +508,8 @@ class _AdminShellState extends State<AdminShell> {
     if (input == null) {
       return;
     }
-    final MarketplaceActionResult<AdminArtworkRecord> result = await _adminService
-        .upsertArtwork(
+    final MarketplaceActionResult<AdminArtworkRecord> result =
+        await _adminService.upsertArtwork(
           artistId: input.artistId,
           title: input.title,
           story: input.story,
@@ -616,7 +619,11 @@ class _AdminShellState extends State<AdminShell> {
     }
 
     final MarketplaceActionResult<AdminOrderRecord> result = await _adminService
-        .reviewManualPayment(orderId: order.orderId, action: action, note: note);
+        .reviewManualPayment(
+          orderId: order.orderId,
+          action: action,
+          note: note,
+        );
     if (!mounted) {
       return;
     }
@@ -750,6 +757,15 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   Future<void> _uploadInventoryImage(AdminInventoryRecord item) async {
+    if (item.hasEditorialImage) {
+      setState(() {
+        _bannerMessage =
+            'This collectible already has an editorial photo. Remove it before uploading a replacement.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       withData: true,
@@ -767,8 +783,24 @@ class _AdminShellState extends State<AdminShell> {
       return;
     }
 
-    final String fileName = file.name.trim().isEmpty ? 'editorial-image.jpg' : file.name;
-    final String contentType = _contentTypeForFileName(fileName);
+    final String fileName = file.name.trim().isEmpty
+        ? 'editorial-image.jpg'
+        : file.name;
+    final String? contentType = _contentTypeForFileName(fileName);
+    if (contentType == null) {
+      setState(() {
+        _bannerMessage =
+            'Use PNG, JPG, WEBP, or GIF for editorial catalog photos.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _catalogMediaBusyItemIds.add(item.itemId);
+      _bannerMessage = 'Uploading editorial photo for ${item.serialNumber}...';
+      _bannerIsError = false;
+    });
     final MarketplaceActionResult<void> uploadResult = await _adminService
         .uploadInventoryImage(
           itemId: item.itemId,
@@ -788,8 +820,61 @@ class _AdminShellState extends State<AdminShell> {
     }
 
     setState(() {
+      _catalogMediaBusyItemIds.remove(item.itemId);
       _bannerMessage = uploadResult.message;
       _bannerIsError = !uploadResult.success;
+    });
+  }
+
+  Future<void> _removeInventoryImage(AdminInventoryRecord item) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1712),
+          title: const Text('Remove editorial photo?'),
+          content: Text(
+            'Remove the current editorial image for ${item.serialNumber}. You can upload a replacement after this finishes.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Keep photo'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Remove photo'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _catalogMediaBusyItemIds.add(item.itemId);
+      _bannerMessage = 'Removing editorial photo for ${item.serialNumber}...';
+      _bannerIsError = false;
+    });
+    final MarketplaceActionResult<void> removeResult = await _adminService
+        .removeInventoryImage(itemId: item.itemId);
+    if (!mounted) {
+      return;
+    }
+
+    if (removeResult.success) {
+      await _refreshAdminData();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    setState(() {
+      _catalogMediaBusyItemIds.remove(item.itemId);
+      _bannerMessage = removeResult.message;
+      _bannerIsError = !removeResult.success;
     });
   }
 
@@ -804,39 +889,40 @@ class _AdminShellState extends State<AdminShell> {
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
-          builder: (BuildContext context, void Function(void Function()) setState) {
-            final bool hasReason = note.trim().isNotEmpty;
-            return AlertDialog(
-              backgroundColor: const Color(0xFF1A1712),
-              title: Text(title),
-              content: TextField(
-                minLines: 3,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText: hint,
-                  errorText: required && !hasReason
-                      ? 'A reason is required.'
-                      : null,
-                ),
-                onChanged: (String value) {
-                  note = value;
-                  setState(() {});
-                },
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-                FilledButton(
-                  onPressed: required && !hasReason
-                      ? null
-                      : () => Navigator.of(context).pop(note.trim()),
-                  child: Text(confirmLabel),
-                ),
-              ],
-            );
-          },
+          builder:
+              (BuildContext context, void Function(void Function()) setState) {
+                final bool hasReason = note.trim().isNotEmpty;
+                return AlertDialog(
+                  backgroundColor: const Color(0xFF1A1712),
+                  title: Text(title),
+                  content: TextField(
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: InputDecoration(
+                      hintText: hint,
+                      errorText: required && !hasReason
+                          ? 'A reason is required.'
+                          : null,
+                    ),
+                    onChanged: (String value) {
+                      note = value;
+                      setState(() {});
+                    },
+                  ),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                    FilledButton(
+                      onPressed: required && !hasReason
+                          ? null
+                          : () => Navigator.of(context).pop(note.trim()),
+                      child: Text(confirmLabel),
+                    ),
+                  ],
+                );
+              },
         );
       },
     );
@@ -844,10 +930,13 @@ class _AdminShellState extends State<AdminShell> {
   }
 }
 
-String _contentTypeForFileName(String fileName) {
+String? _contentTypeForFileName(String fileName) {
   final String lowerName = fileName.toLowerCase();
   if (lowerName.endsWith('.png')) {
     return 'image/png';
+  }
+  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+    return 'image/jpeg';
   }
   if (lowerName.endsWith('.webp')) {
     return 'image/webp';
@@ -855,7 +944,7 @@ String _contentTypeForFileName(String fileName) {
   if (lowerName.endsWith('.gif')) {
     return 'image/gif';
   }
-  return 'image/jpeg';
+  return null;
 }
 
 class ConfigState extends StatelessWidget {
@@ -1074,7 +1163,9 @@ Future<_CatalogArtistInput?> promptForArtist(BuildContext context) async {
                 children: <Widget>[
                   TextField(
                     controller: displayName,
-                    decoration: const InputDecoration(labelText: 'Display name'),
+                    decoration: const InputDecoration(
+                      labelText: 'Display name',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1170,10 +1261,11 @@ Future<_CatalogArtworkInput?> promptForArtwork(
                     decoration: const InputDecoration(labelText: 'Artist'),
                     items: artists
                         .map(
-                          (AdminArtistRecord artist) => DropdownMenuItem<String>(
-                            value: artist.artistId,
-                            child: Text(artist.displayName),
-                          ),
+                          (AdminArtistRecord artist) =>
+                              DropdownMenuItem<String>(
+                                value: artist.artistId,
+                                child: Text(artist.displayName),
+                              ),
                         )
                         .toList(),
                     onChanged: (String? value) {
@@ -1263,7 +1355,8 @@ Future<_CatalogInventoryInput?> promptForInventory(
   String garmentProductId = garmentProducts.first.garmentProductId;
   String itemState = 'minted';
 
-  final _CatalogInventoryInput? value = await showDialog<_CatalogInventoryInput>(
+  final _CatalogInventoryInput?
+  value = await showDialog<_CatalogInventoryInput>(
     context: context,
     builder: (BuildContext context) {
       return StatefulBuilder(
@@ -1281,10 +1374,11 @@ Future<_CatalogInventoryInput?> promptForInventory(
                     decoration: const InputDecoration(labelText: 'Artist'),
                     items: artists
                         .map(
-                          (AdminArtistRecord artist) => DropdownMenuItem<String>(
-                            value: artist.artistId,
-                            child: Text(artist.displayName),
-                          ),
+                          (AdminArtistRecord artist) =>
+                              DropdownMenuItem<String>(
+                                value: artist.artistId,
+                                child: Text(artist.displayName),
+                              ),
                         )
                         .toList(),
                     onChanged: (String? value) {
@@ -1345,24 +1439,27 @@ Future<_CatalogInventoryInput?> promptForInventory(
                   const SizedBox(height: 12),
                   TextField(
                     controller: serialNumber,
-                    decoration: const InputDecoration(labelText: 'Serial number'),
+                    decoration: const InputDecoration(
+                      labelText: 'Serial number',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: itemState,
                     decoration: const InputDecoration(labelText: 'Item state'),
-                    items: const <String>[
-                      'drafted',
-                      'minted',
-                      'in_inventory',
-                      'sold_unclaimed',
-                      'claimed',
-                    ].map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
-                    }).toList(),
+                    items:
+                        const <String>[
+                          'drafted',
+                          'minted',
+                          'in_inventory',
+                          'sold_unclaimed',
+                          'claimed',
+                        ].map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
                     onChanged: (String? value) {
                       if (value != null) {
                         setDialogState(() {
@@ -1405,85 +1502,90 @@ Future<_InventoryListingInput?> promptForInventoryListing(
   BuildContext context,
   AdminInventoryRecord item,
 ) async {
-  String price = item.askingPriceCents == null ? '' : '${item.askingPriceCents}';
+  String price = item.askingPriceCents == null
+      ? ''
+      : '${item.askingPriceCents}';
   String status = item.listingStatus == null ? 'active' : item.listingStatus!;
 
-  final _InventoryListingInput? value = await showDialog<_InventoryListingInput>(
-    context: context,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1A1712),
-            title: Text('Listing for ${item.serialNumber}'),
-            content: SizedBox(
-              width: 420,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    '${item.artistName} / ${item.artworkTitle}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+  final _InventoryListingInput? value =
+      await showDialog<_InventoryListingInput>(
+        context: context,
+        builder: (BuildContext context) {
+          return StatefulBuilder(
+            builder: (BuildContext context, StateSetter setDialogState) {
+              return AlertDialog(
+                backgroundColor: const Color(0xFF1A1712),
+                title: Text('Listing for ${item.serialNumber}'),
+                content: SizedBox(
+                  width: 420,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        '${item.artistName} / ${item.artworkTitle}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        initialValue: price,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Asking price (cents)',
+                        ),
+                        onChanged: (String value) {
+                          price = value;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: status,
+                        decoration: const InputDecoration(
+                          labelText: 'Listing status',
+                        ),
+                        items: const <String>['draft', 'active']
+                            .map(
+                              (String value) => DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (String? value) {
+                          if (value != null) {
+                            setDialogState(() {
+                              status = value;
+                            });
+                          }
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: price,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Asking price (cents)',
-                    ),
-                    onChanged: (String value) {
-                      price = value;
-                    },
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: status,
-                    decoration: const InputDecoration(
-                      labelText: 'Listing status',
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(
+                      _InventoryListingInput(
+                        askingPriceCents: int.tryParse(price.trim()) ?? 0,
+                        status: status,
+                      ),
                     ),
-                    items: const <String>['draft', 'active']
-                        .map(
-                          (String value) => DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (String? value) {
-                      if (value != null) {
-                        setDialogState(() {
-                          status = value;
-                        });
-                      }
-                    },
+                    child: Text(
+                      item.listingStatus == null
+                          ? 'Create listing'
+                          : 'Save listing',
+                    ),
                   ),
                 ],
-              ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(
-                  _InventoryListingInput(
-                    askingPriceCents: int.tryParse(price.trim()) ?? 0,
-                    status: status,
-                  ),
-                ),
-                child: Text(
-                  item.listingStatus == null ? 'Create listing' : 'Save listing',
-                ),
-              ),
-            ],
+              );
+            },
           );
         },
       );
-    },
-  );
   return value;
 }
 

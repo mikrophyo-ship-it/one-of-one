@@ -11,6 +11,63 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   testWidgets(
+    'admin catalog shows existing photo state and restores upload after removal',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final _FakeAdminRepository repository = _FakeAdminRepository();
+      final _TestAdminAuthService authService = _TestAdminAuthService(
+        initialSession: _buildSession(
+          id: 'admin_1',
+          email: 'admin@example.com',
+          displayName: 'Admin Operator',
+          username: 'adminoperator',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: AdminShell(
+            authService: authService,
+            adminService: AdminOperationsService(repository: repository),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapRailLabel(tester, 'Catalog');
+      expect(find.text('Photo attached'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Remove photo'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Upload photo'),
+        findsNWidgets(3),
+      );
+
+      await _tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'Remove photo').first,
+      );
+      expect(find.text('Remove editorial photo?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove photo').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Editorial image removed from the collectible.'),
+        findsOneWidget,
+      );
+      expect(find.text('Photo attached'), findsNothing);
+      expect(
+        find.widgetWithText(FilledButton, 'Upload photo'),
+        findsNWidgets(4),
+      );
+    },
+  );
+
+  testWidgets(
     'admin app verification covers sign in, dashboard, customers, moderation, disputes, freeze-release, settings, and audit feed',
     (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1600, 1200);
@@ -42,7 +99,9 @@ void main() {
 
       await _enterField(tester, 'Email', 'admin@example.com');
       await _enterField(tester, 'Password', 'password123');
-      await tester.tap(find.widgetWithText(FilledButton, 'Enter admin console'));
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Enter admin console'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Operational overview'), findsOneWidget);
@@ -83,7 +142,10 @@ void main() {
       await _enterField(tester, 'Reason', 'Packaging support review.');
       await tester.tap(find.widgetWithText(FilledButton, 'Reveal code'));
       await tester.pumpAndSettle();
-      expect(find.text('Hidden claim code opened in secure view.'), findsOneWidget);
+      expect(
+        find.text('Hidden claim code opened in secure view.'),
+        findsOneWidget,
+      );
       expect(find.text('Hidden claim code revealed'), findsOneWidget);
       await tester.tap(find.widgetWithText(TextButton, 'Close'));
       await tester.pumpAndSettle();
@@ -92,10 +154,17 @@ void main() {
         tester,
         find.widgetWithText(FilledButton, 'Packet').first,
       );
-      await _enterField(tester, 'Reason', 'Preparing a secure shipment insert.');
+      await _enterField(
+        tester,
+        'Reason',
+        'Preparing a secure shipment insert.',
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Generate packet'));
       await tester.pumpAndSettle();
-      expect(find.text('Claim packet opened in secure print view.'), findsOneWidget);
+      expect(
+        find.text('Claim packet opened in secure print view.'),
+        findsOneWidget,
+      );
       expect(find.text('Printable claim packet'), findsOneWidget);
       await tester.tap(find.widgetWithText(TextButton, 'Close'));
       await tester.pumpAndSettle();
@@ -138,7 +207,10 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Apply'));
       await tester.pumpAndSettle();
-      expect(find.text('Item status updated by admin control.'), findsOneWidget);
+      expect(
+        find.text('Item status updated by admin control.'),
+        findsOneWidget,
+      );
       expect(find.text('frozen'), findsWidgets);
 
       await _tapVisible(
@@ -165,7 +237,10 @@ void main() {
       expect(find.text('1250'), findsOneWidget);
 
       await _tapRailLabel(tester, 'Audit');
-      expect(find.text('admin_create_item_authenticity_record'), findsOneWidget);
+      expect(
+        find.text('admin_create_item_authenticity_record'),
+        findsOneWidget,
+      );
       expect(find.text('admin_upsert_item_listing'), findsOneWidget);
       expect(find.text('set_user_role'), findsOneWidget);
       expect(find.text('moderate_listing'), findsOneWidget);
@@ -264,67 +339,69 @@ void main() {
     },
   );
 
-  testWidgets(
-    'admin orders can approve a submitted manual payment proof',
-    (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1600, 1200);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('admin orders can approve a submitted manual payment proof', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      final _FakeAdminRepository repository = _FakeAdminRepository();
-      final _TestAdminAuthService authService = _TestAdminAuthService(
-        initialSession: _buildSession(
-          id: 'admin_1',
-          email: 'admin@example.com',
-          displayName: 'Admin Operator',
-          username: 'adminoperator',
+    final _FakeAdminRepository repository = _FakeAdminRepository();
+    final _TestAdminAuthService authService = _TestAdminAuthService(
+      initialSession: _buildSession(
+        id: 'admin_1',
+        email: 'admin@example.com',
+        displayName: 'Admin Operator',
+        username: 'adminoperator',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: AdminShell(
+          authService: authService,
+          adminService: AdminOperationsService(repository: repository),
         ),
-      );
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData.dark(),
-          home: AdminShell(
-            authService: authService,
-            adminService: AdminOperationsService(repository: repository),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+    await _tapRailLabel(tester, 'Orders');
+    expect(find.textContaining('Pending manual reviews: 1'), findsOneWidget);
+    expect(find.textContaining('Proof attached'), findsOneWidget);
+    expect(find.text('order_3'), findsNothing);
 
-      await _tapRailLabel(tester, 'Orders');
-      expect(find.textContaining('Pending manual reviews: 1'), findsOneWidget);
-      expect(find.textContaining('Proof attached'), findsOneWidget);
-      expect(find.text('order_3'), findsNothing);
+    await _openActionsMenu(tester, 'order_2');
+    await tester.tap(find.text('View details').last);
+    await tester.pumpAndSettle();
 
-      await _openActionsMenu(tester, 'order_2');
-      await tester.tap(find.text('View details').last);
-      await tester.pumpAndSettle();
+    expect(find.text('Order OOO-AG-0001'), findsOneWidget);
+    expect(find.text('Method'), findsOneWidget);
+    expect(find.text('WavePay'), findsOneWidget);
+    expect(find.text('Payer'), findsOneWidget);
+    expect(find.text('Avery Collector'), findsWidgets);
 
-      expect(find.text('Order OOO-AG-0001'), findsOneWidget);
-      expect(find.text('Method'), findsOneWidget);
-      expect(find.text('WavePay'), findsOneWidget);
-      expect(find.text('Payer'), findsOneWidget);
-      expect(find.text('Avery Collector'), findsWidgets);
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve payment'));
+    await tester.pumpAndSettle();
+    expect(find.text('Approve payment proof'), findsOneWidget);
+    await _enterField(
+      tester,
+      'Add an internal review note (optional)',
+      'Payment matched.',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Approve payment'));
-      await tester.pumpAndSettle();
-      expect(find.text('Approve payment proof'), findsOneWidget);
-      await _enterField(
-        tester,
-        'Add an internal review note (optional)',
-        'Payment matched.',
-      );
-      await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Payment approved and order moved forward.'), findsOneWidget);
-      await tester.tap(find.text('All orders').last);
-      await tester.pumpAndSettle();
-      expect(find.text('captured / manual_transfer'), findsOneWidget);
-    },
-  );
+    expect(
+      find.text('Payment approved and order moved forward.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('All orders').last);
+    await tester.pumpAndSettle();
+    expect(find.text('captured / manual_transfer'), findsOneWidget);
+  });
 
   testWidgets(
     'admin can reject payment with a required reason and move the order into rejected history',
@@ -514,8 +591,7 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 }
 
 Future<void> _openActionsMenu(WidgetTester tester, String orderId) async {
-  final Finder actions =
-      find.byKey(ValueKey<String>('order-actions-$orderId'));
+  final Finder actions = find.byKey(ValueKey<String>('order-actions-$orderId'));
   await tester.ensureVisible(actions);
   await tester.tap(actions);
   await tester.pumpAndSettle();
@@ -826,6 +902,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         qrReady: true,
         claimPacketReady: false,
         claimCodeRevealState: 'unavailable',
+        hasEditorialImage: true,
       ),
       const AdminInventoryRecord(
         itemId: 'item_2',
@@ -845,6 +922,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         qrReady: false,
         claimPacketReady: false,
         claimCodeRevealState: 'awaiting_authenticity',
+        hasEditorialImage: false,
       ),
       const AdminInventoryRecord(
         itemId: 'item_3',
@@ -864,6 +942,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         qrReady: true,
         claimPacketReady: true,
         claimCodeRevealState: 'ready',
+        hasEditorialImage: false,
       ),
       const AdminInventoryRecord(
         itemId: 'item_4',
@@ -883,6 +962,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         qrReady: true,
         claimPacketReady: true,
         claimCodeRevealState: 'ready',
+        hasEditorialImage: false,
       ),
     ];
     _garmentProducts = <AdminGarmentProductRecord>[
@@ -985,7 +1065,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       reporterDisplayName: current.reporterDisplayName,
       reporterUsername: current.reporterUsername,
       serialNumber: current.serialNumber,
-      itemState: releaseItem ? (releaseTargetState ?? current.itemState) : current.itemState,
+      itemState: releaseItem
+          ? (releaseTargetState ?? current.itemState)
+          : current.itemState,
       garmentName: current.garmentName,
       artworkTitle: current.artworkTitle,
       artistName: current.artistName,
@@ -1176,9 +1258,8 @@ class _FakeAdminRepository implements AdminOperationsRepository {
   }
 
   @override
-  Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
-    required String itemId,
-  }) async {
+  Future<MarketplaceActionResult<AdminInventoryRecord>>
+  createAuthenticityRecord({required String itemId}) async {
     final int index = _inventory.indexWhere(
       (AdminInventoryRecord item) => item.itemId == itemId,
     );
@@ -1208,6 +1289,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       qrReady: true,
       claimPacketReady: true,
       claimCodeRevealState: 'ready',
+      hasEditorialImage: current.hasEditorialImage,
     );
     _addAudit(
       action: 'admin_create_item_authenticity_record',
@@ -1240,7 +1322,8 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     }
 
     final AdminInventoryRecord current = _inventory[index];
-    final String listingId = current.listingId ?? 'listing_${_listings.length + 1}';
+    final String listingId =
+        current.listingId ?? 'listing_${_listings.length + 1}';
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
@@ -1261,6 +1344,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       qrReady: current.qrReady,
       claimPacketReady: false,
       claimCodeRevealState: current.claimCodeRevealState,
+      hasEditorialImage: current.hasEditorialImage,
     );
 
     final int listingIndex = _listings.indexWhere(
@@ -1314,6 +1398,45 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     required String fileName,
     required String contentType,
   }) async {
+    final int index = _inventory.indexWhere(
+      (AdminInventoryRecord item) => item.itemId == itemId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<void>(
+        success: false,
+        message: 'Inventory item not found.',
+      );
+    }
+
+    final AdminInventoryRecord current = _inventory[index];
+    if (current.hasEditorialImage) {
+      return const MarketplaceActionResult<void>(
+        success: false,
+        message:
+            'This collectible already has an editorial photo. Remove it before uploading a replacement.',
+      );
+    }
+
+    _inventory[index] = AdminInventoryRecord(
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      artistName: current.artistName,
+      artworkTitle: current.artworkTitle,
+      garmentName: current.garmentName,
+      itemState: current.itemState,
+      ownerDisplayLabel: current.ownerDisplayLabel,
+      hasAuthenticityRecord: current.hasAuthenticityRecord,
+      authenticityStatus: current.authenticityStatus,
+      listingId: current.listingId,
+      listingStatus: current.listingStatus,
+      askingPriceCents: current.askingPriceCents,
+      customerVisible: current.customerVisible,
+      buyable: current.buyable,
+      qrReady: current.qrReady,
+      claimPacketReady: current.claimPacketReady,
+      claimCodeRevealState: current.claimCodeRevealState,
+      hasEditorialImage: true,
+    );
     _addAudit(
       action: 'admin_attach_item_media_asset',
       entityType: 'media_asset',
@@ -1327,6 +1450,61 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     return const MarketplaceActionResult<void>(
       success: true,
       message: 'Editorial image uploaded for the collectible.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> removeInventoryImage({
+    required String itemId,
+  }) async {
+    final int index = _inventory.indexWhere(
+      (AdminInventoryRecord item) => item.itemId == itemId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<void>(
+        success: false,
+        message: 'Inventory item not found.',
+      );
+    }
+
+    final AdminInventoryRecord current = _inventory[index];
+    if (!current.hasEditorialImage) {
+      return const MarketplaceActionResult<void>(
+        success: false,
+        message: 'No editorial photo is attached to this collectible yet.',
+      );
+    }
+
+    _inventory[index] = AdminInventoryRecord(
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      artistName: current.artistName,
+      artworkTitle: current.artworkTitle,
+      garmentName: current.garmentName,
+      itemState: current.itemState,
+      ownerDisplayLabel: current.ownerDisplayLabel,
+      hasAuthenticityRecord: current.hasAuthenticityRecord,
+      authenticityStatus: current.authenticityStatus,
+      listingId: current.listingId,
+      listingStatus: current.listingStatus,
+      askingPriceCents: current.askingPriceCents,
+      customerVisible: current.customerVisible,
+      buyable: current.buyable,
+      qrReady: current.qrReady,
+      claimPacketReady: current.claimPacketReady,
+      claimCodeRevealState: current.claimCodeRevealState,
+      hasEditorialImage: false,
+    );
+    _addAudit(
+      action: 'admin_remove_item_media_assets',
+      entityType: 'media_asset',
+      entityId: itemId,
+      payload: const <String, dynamic>{'removed': true},
+    );
+    _rebuildSnapshot();
+    return const MarketplaceActionResult<void>(
+      success: true,
+      message: 'Editorial image removed from the collectible.',
     );
   }
 
@@ -1378,6 +1556,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         qrReady: item.qrReady,
         claimPacketReady: item.claimPacketReady,
         claimCodeRevealState: item.claimCodeRevealState,
+        hasEditorialImage: item.hasEditorialImage,
       );
     }).toList();
     _disputes = _disputes.map((AdminDisputeRecord dispute) {
@@ -1560,7 +1739,8 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     if (reason.trim().isEmpty) {
       return const MarketplaceActionResult<AdminClaimPacketData>(
         success: false,
-        message: 'Enter a clear operator reason before revealing a claim code or generating a packet.',
+        message:
+            'Enter a clear operator reason before revealing a claim code or generating a packet.',
       );
     }
     final int index = _inventory.indexWhere(
@@ -1592,15 +1772,13 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       qrReady: current.qrReady,
       claimPacketReady: current.claimPacketReady,
       claimCodeRevealState: 'revealed_once',
+      hasEditorialImage: current.hasEditorialImage,
     );
     _addAudit(
       action: 'admin_reveal_claim_code',
       entityType: 'unique_item',
       entityId: itemId,
-      payload: <String, dynamic>{
-        'reveal_action': 'reveal',
-        'reason': reason,
-      },
+      payload: <String, dynamic>{'reveal_action': 'reveal', 'reason': reason},
     );
     _rebuildSnapshot();
     return const MarketplaceActionResult<AdminClaimPacketData>(
@@ -1629,7 +1807,8 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     if (reason.trim().isEmpty) {
       return const MarketplaceActionResult<AdminClaimPacketData>(
         success: false,
-        message: 'Enter a clear operator reason before revealing a claim code or generating a packet.',
+        message:
+            'Enter a clear operator reason before revealing a claim code or generating a packet.',
       );
     }
     final int index = _inventory.indexWhere(
@@ -1661,6 +1840,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       qrReady: current.qrReady,
       claimPacketReady: false,
       claimCodeRevealState: current.claimCodeRevealState,
+      hasEditorialImage: current.hasEditorialImage,
     );
     _addAudit(
       action: 'admin_generate_claim_packet',
@@ -1749,7 +1929,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         )
         .length;
     final int activeListings = _listings
-        .where((AdminListingRecord listing) => listing.listingStatus == 'active')
+        .where(
+          (AdminListingRecord listing) => listing.listingStatus == 'active',
+        )
         .length;
 
     _snapshot = AdminOperationsSnapshot(
@@ -1765,7 +1947,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         platformFeeCents: 18000,
         frozenItems: frozenCount,
         stolenItems: _inventory
-            .where((AdminInventoryRecord item) => item.itemState == 'stolen_flagged')
+            .where(
+              (AdminInventoryRecord item) => item.itemState == 'stolen_flagged',
+            )
             .length,
       ),
       customers: List<AdminCustomerRecord>.unmodifiable(_customers),
