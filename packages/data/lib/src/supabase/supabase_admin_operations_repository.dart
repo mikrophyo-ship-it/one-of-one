@@ -436,6 +436,70 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
   }
 
   @override
+  Future<MarketplaceActionResult<AdminClaimPacketData>> revealItemClaimCode({
+    required String itemId,
+    required String reason,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final Map<String, dynamic> row = (await _client!.rpc(
+        'admin_reveal_item_claim_code',
+        params: <String, dynamic>{'p_item_id': itemId, 'p_reason': reason},
+      )) as Map<String, dynamic>;
+      await refresh();
+      return MarketplaceActionResult<AdminClaimPacketData>(
+        success: true,
+        message: 'Hidden claim code opened in secure view.',
+        data: _claimPacketFromRow(row),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminClaimPacketData>> generateClaimPacket({
+    required String itemId,
+    required String reason,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: configError,
+      );
+    }
+
+    try {
+      final Map<String, dynamic> row = (await _client!.rpc(
+        'admin_generate_claim_packet',
+        params: <String, dynamic>{'p_item_id': itemId, 'p_reason': reason},
+      )) as Map<String, dynamic>;
+      await refresh();
+      return MarketplaceActionResult<AdminClaimPacketData>(
+        success: true,
+        message: 'Claim packet opened in secure print view.',
+        data: _claimPacketFromRow(row),
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
   Future<MarketplaceActionResult<void>> uploadInventoryImage({
     required String itemId,
     required Uint8List bytes,
@@ -763,6 +827,25 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
           : _toInt(row['asking_price_cents']),
       customerVisible: row['customer_visible'] == true,
       buyable: row['buyable'] == true,
+      qrReady: row['qr_ready'] == true,
+      claimPacketReady: row['claim_packet_ready'] == true,
+      claimCodeRevealState:
+          _nullableString(row['claim_code_reveal_state']) ?? 'unavailable',
+    );
+  }
+
+  AdminClaimPacketData _claimPacketFromRow(Map<String, dynamic> row) {
+    return AdminClaimPacketData(
+      itemId: row['item_id'].toString(),
+      serialNumber: row['serial_number'].toString(),
+      artistName: row['artist_name'].toString(),
+      artworkTitle: row['artwork_title'].toString(),
+      garmentName: row['garment_name'].toString(),
+      publicQrToken: row['public_qr_token'].toString(),
+      verificationUri: row['verification_uri'].toString(),
+      hiddenClaimCode: row['hidden_claim_code'].toString(),
+      claimCodeRevealState: row['claim_code_reveal_state'].toString(),
+      revealAction: row['reveal_action'].toString(),
     );
   }
 
@@ -911,7 +994,31 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       return 'This item already has an operational listing record.';
     }
     if (message.contains('Create authenticity record first')) {
-      return 'Create the item authenticity record before publishing it to customers.';
+      return 'Create the item authenticity record before publishing it to customers or preparing a claim packet.';
+    }
+    if (message.contains('Claim code already revealed')) {
+      return 'This item already had its hidden claim code revealed once and can no longer be reopened from the console.';
+    }
+    if (message.contains('Claim packet already generated')) {
+      return 'This item already generated a printable claim packet once and cannot open another packet.';
+    }
+    if (message.contains('Claim code already consumed')) {
+      return 'This item already used its hidden claim code and cannot open a new claim packet.';
+    }
+    if (message.contains('Sensitive claim action reason is required')) {
+      return 'Enter a clear operator reason before revealing a claim code or generating a packet.';
+    }
+    if (message.contains('QR token is not ready for this item')) {
+      return 'Create authenticity first so the public verification QR is ready before preparing claim materials.';
+    }
+    if (message.contains('Item is not eligible for secure claim operations')) {
+      return 'Only unclaimed, unrestricted inventory items can open a secure claim reveal or packet.';
+    }
+    if (message.contains('Secure claim material unavailable for this item')) {
+      return 'This item does not have secure claim packet material yet. Reissue the claim packet only for inventory created after the claim-ops migration is applied.';
+    }
+    if (message.contains('Secure claim material is out of sync for this item')) {
+      return 'Secure claim material for this item is out of sync and needs an admin migration review before it can be revealed.';
     }
     if (message.contains('Unsupported listing status')) {
       return 'Use draft or active when saving an operational listing.';

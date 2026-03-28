@@ -70,3 +70,11 @@ One of One is a premium collectible fashion marketplace for original human-made 
 - Ownership, listing, dispute, moderation, payment capture, and transfer authority are enforced in Supabase RPCs rather than trusted client state.
 - The current repository still needs full Flutter platform scaffolding and full analyzer or widget-test verification in an unrestricted local environment if your sandbox blocks Flutter subprocesses.
 
+
+
+## Admin Claim Workflow
+Apply `supabase/migrations/0018_admin_claim_operations.sql` before using admin-side hidden claim code reveal or printable claim packets.
+This migration adds:
+- admin-only secure claim material storage for newly created inventory
+- separate audited semantics for one-time reveal vs one-time packet generation
+- required operator reason text for both sensitive actions

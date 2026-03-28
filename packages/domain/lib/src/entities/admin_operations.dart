@@ -228,6 +228,9 @@ class AdminInventoryRecord {
     required this.askingPriceCents,
     required this.customerVisible,
     required this.buyable,
+    required this.qrReady,
+    required this.claimPacketReady,
+    required this.claimCodeRevealState,
   });
 
   final String itemId;
@@ -244,6 +247,35 @@ class AdminInventoryRecord {
   final int? askingPriceCents;
   final bool customerVisible;
   final bool buyable;
+  final bool qrReady;
+  final bool claimPacketReady;
+  final String claimCodeRevealState;
+}
+
+class AdminClaimPacketData {
+  const AdminClaimPacketData({
+    required this.itemId,
+    required this.serialNumber,
+    required this.artistName,
+    required this.artworkTitle,
+    required this.garmentName,
+    required this.publicQrToken,
+    required this.verificationUri,
+    required this.hiddenClaimCode,
+    required this.claimCodeRevealState,
+    required this.revealAction,
+  });
+
+  final String itemId;
+  final String serialNumber;
+  final String artistName;
+  final String artworkTitle;
+  final String garmentName;
+  final String publicQrToken;
+  final String verificationUri;
+  final String hiddenClaimCode;
+  final String claimCodeRevealState;
+  final String revealAction;
 }
 
 class AdminGarmentProductRecord {

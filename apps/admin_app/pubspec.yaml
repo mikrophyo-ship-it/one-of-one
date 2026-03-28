@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   file_picker: ^8.1.7
+  qr_flutter: ^4.1.0
   supabase_flutter: ^2.8.0
   core_ui:
     path: ../../packages/core_ui

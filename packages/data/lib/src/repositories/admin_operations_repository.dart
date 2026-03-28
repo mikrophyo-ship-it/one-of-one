@@ -32,6 +32,7 @@ abstract class AdminOperationsRepository {
     required String userId,
     required String role,
   });
+
   Future<MarketplaceActionResult<AdminArtistRecord>> upsertArtist({
     String? artistId,
     required String displayName,
@@ -40,6 +41,7 @@ abstract class AdminOperationsRepository {
     required String authenticityStatement,
     required bool isActive,
   });
+
   Future<MarketplaceActionResult<AdminArtworkRecord>> upsertArtwork({
     String? artworkId,
     required String artistId,
@@ -48,6 +50,7 @@ abstract class AdminOperationsRepository {
     required List<String> provenanceProof,
     DateTime? creationDate,
   });
+
   Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryItem({
     String? itemId,
     required String artistId,
@@ -65,6 +68,16 @@ abstract class AdminOperationsRepository {
     required String itemId,
     required int askingPriceCents,
     required String status,
+  });
+
+  Future<MarketplaceActionResult<AdminClaimPacketData>> revealItemClaimCode({
+    required String itemId,
+    required String reason,
+  });
+
+  Future<MarketplaceActionResult<AdminClaimPacketData>> generateClaimPacket({
+    required String itemId,
+    required String reason,
   });
 
   Future<MarketplaceActionResult<void>> uploadInventoryImage({

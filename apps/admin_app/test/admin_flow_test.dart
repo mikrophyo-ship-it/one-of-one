@@ -76,6 +76,30 @@ void main() {
       expect(find.text('Listing published for sale.'), findsOneWidget);
       expect(find.text('active'), findsWidgets);
 
+      await _tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'Reveal').first,
+      );
+      await _enterField(tester, 'Reason', 'Packaging support review.');
+      await tester.tap(find.widgetWithText(FilledButton, 'Reveal code'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hidden claim code opened in secure view.'), findsOneWidget);
+      expect(find.text('Hidden claim code revealed'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Close'));
+      await tester.pumpAndSettle();
+
+      await _tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'Packet').first,
+      );
+      await _enterField(tester, 'Reason', 'Preparing a secure shipment insert.');
+      await tester.tap(find.widgetWithText(FilledButton, 'Generate packet'));
+      await tester.pumpAndSettle();
+      expect(find.text('Claim packet opened in secure print view.'), findsOneWidget);
+      expect(find.text('Printable claim packet'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Close'));
+      await tester.pumpAndSettle();
+
       await _tapRailLabel(tester, 'Customers');
       expect(find.text('Avery Collector'), findsOneWidget);
       await tester.tap(find.text('customer').first);
@@ -439,6 +463,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         askingPriceCents: 180000,
         customerVisible: true,
         buyable: true,
+        qrReady: true,
+        claimPacketReady: false,
+        claimCodeRevealState: 'unavailable',
       ),
       const AdminInventoryRecord(
         itemId: 'item_2',
@@ -455,6 +482,47 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         askingPriceCents: null,
         customerVisible: false,
         buyable: false,
+        qrReady: false,
+        claimPacketReady: false,
+        claimCodeRevealState: 'awaiting_authenticity',
+      ),
+      const AdminInventoryRecord(
+        itemId: 'item_3',
+        serialNumber: 'OOO-READY-0003',
+        artistName: 'Maya Vale',
+        artworkTitle: 'Afterglow No. 01',
+        garmentName: 'Collector Tee',
+        itemState: 'in_inventory',
+        ownerDisplayLabel: 'Unassigned',
+        hasAuthenticityRecord: true,
+        authenticityStatus: 'verified_human_made',
+        listingId: null,
+        listingStatus: null,
+        askingPriceCents: null,
+        customerVisible: true,
+        buyable: false,
+        qrReady: true,
+        claimPacketReady: true,
+        claimCodeRevealState: 'ready',
+      ),
+      const AdminInventoryRecord(
+        itemId: 'item_4',
+        serialNumber: 'OOO-PACKET-0004',
+        artistName: 'Maya Vale',
+        artworkTitle: 'Afterglow No. 01',
+        garmentName: 'Collector Tee',
+        itemState: 'sold_unclaimed',
+        ownerDisplayLabel: 'Unassigned',
+        hasAuthenticityRecord: true,
+        authenticityStatus: 'verified_human_made',
+        listingId: null,
+        listingStatus: null,
+        askingPriceCents: null,
+        customerVisible: true,
+        buyable: false,
+        qrReady: true,
+        claimPacketReady: true,
+        claimCodeRevealState: 'ready',
       ),
     ];
     _garmentProducts = <AdminGarmentProductRecord>[
@@ -777,6 +845,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       askingPriceCents: current.askingPriceCents,
       customerVisible: true,
       buyable: current.buyable,
+      qrReady: true,
+      claimPacketReady: true,
+      claimCodeRevealState: 'ready',
     );
     _addAudit(
       action: 'admin_create_item_authenticity_record',
@@ -827,6 +898,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       askingPriceCents: askingPriceCents,
       customerVisible: current.customerVisible,
       buyable: current.hasAuthenticityRecord && status == 'active',
+      qrReady: current.qrReady,
+      claimPacketReady: false,
+      claimCodeRevealState: current.claimCodeRevealState,
     );
 
     final int listingIndex = _listings.indexWhere(
@@ -941,6 +1015,9 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         askingPriceCents: item.askingPriceCents,
         customerVisible: item.customerVisible,
         buyable: item.buyable && targetState != 'frozen',
+        qrReady: item.qrReady,
+        claimPacketReady: item.claimPacketReady,
+        claimCodeRevealState: item.claimCodeRevealState,
       );
     }).toList();
     _disputes = _disputes.map((AdminDisputeRecord dispute) {
@@ -1006,6 +1083,144 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     return const MarketplaceActionResult<void>(
       success: true,
       message: 'Item status updated by admin control.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminClaimPacketData>> revealItemClaimCode({
+    required String itemId,
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) {
+      return const MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: 'Enter a clear operator reason before revealing a claim code or generating a packet.',
+      );
+    }
+    final int index = _inventory.indexWhere(
+      (AdminInventoryRecord item) => item.itemId == itemId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: 'Inventory item not found.',
+      );
+    }
+
+    final AdminInventoryRecord current = _inventory[index];
+    _inventory[index] = AdminInventoryRecord(
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      artistName: current.artistName,
+      artworkTitle: current.artworkTitle,
+      garmentName: current.garmentName,
+      itemState: current.itemState,
+      ownerDisplayLabel: current.ownerDisplayLabel,
+      hasAuthenticityRecord: current.hasAuthenticityRecord,
+      authenticityStatus: current.authenticityStatus,
+      listingId: current.listingId,
+      listingStatus: current.listingStatus,
+      askingPriceCents: current.askingPriceCents,
+      customerVisible: current.customerVisible,
+      buyable: current.buyable,
+      qrReady: current.qrReady,
+      claimPacketReady: current.claimPacketReady,
+      claimCodeRevealState: 'revealed_once',
+    );
+    _addAudit(
+      action: 'admin_reveal_claim_code',
+      entityType: 'unique_item',
+      entityId: itemId,
+      payload: <String, dynamic>{
+        'reveal_action': 'reveal',
+        'reason': reason,
+      },
+    );
+    _rebuildSnapshot();
+    return const MarketplaceActionResult<AdminClaimPacketData>(
+      success: true,
+      message: 'Hidden claim code opened in secure view.',
+      data: AdminClaimPacketData(
+        itemId: 'item_3',
+        serialNumber: 'OOO-READY-0003',
+        artistName: 'Maya Vale',
+        artworkTitle: 'Afterglow No. 01',
+        garmentName: 'Collector Tee',
+        publicQrToken: 'qr_ready_0003',
+        verificationUri: 'oneofone://authenticity/qr_ready_0003',
+        hiddenClaimCode: 'CLAIM-OOOREADY00-AB12CD34',
+        claimCodeRevealState: 'revealed_once',
+        revealAction: 'reveal',
+      ),
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<AdminClaimPacketData>> generateClaimPacket({
+    required String itemId,
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) {
+      return const MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: 'Enter a clear operator reason before revealing a claim code or generating a packet.',
+      );
+    }
+    final int index = _inventory.indexWhere(
+      (AdminInventoryRecord item) => item.itemId == itemId,
+    );
+    if (index == -1) {
+      return const MarketplaceActionResult<AdminClaimPacketData>(
+        success: false,
+        message: 'Inventory item not found.',
+      );
+    }
+
+    final AdminInventoryRecord current = _inventory[index];
+    _inventory[index] = AdminInventoryRecord(
+      itemId: current.itemId,
+      serialNumber: current.serialNumber,
+      artistName: current.artistName,
+      artworkTitle: current.artworkTitle,
+      garmentName: current.garmentName,
+      itemState: current.itemState,
+      ownerDisplayLabel: current.ownerDisplayLabel,
+      hasAuthenticityRecord: current.hasAuthenticityRecord,
+      authenticityStatus: current.authenticityStatus,
+      listingId: current.listingId,
+      listingStatus: current.listingStatus,
+      askingPriceCents: current.askingPriceCents,
+      customerVisible: current.customerVisible,
+      buyable: current.buyable,
+      qrReady: current.qrReady,
+      claimPacketReady: false,
+      claimCodeRevealState: current.claimCodeRevealState,
+    );
+    _addAudit(
+      action: 'admin_generate_claim_packet',
+      entityType: 'unique_item',
+      entityId: itemId,
+      payload: <String, dynamic>{
+        'reveal_action': 'claim_packet',
+        'reason': reason,
+      },
+    );
+    _rebuildSnapshot();
+    return const MarketplaceActionResult<AdminClaimPacketData>(
+      success: true,
+      message: 'Claim packet opened in secure print view.',
+      data: AdminClaimPacketData(
+        itemId: 'item_4',
+        serialNumber: 'OOO-PACKET-0004',
+        artistName: 'Maya Vale',
+        artworkTitle: 'Afterglow No. 01',
+        garmentName: 'Collector Tee',
+        publicQrToken: 'qr_packet_0004',
+        verificationUri: 'oneofone://authenticity/qr_packet_0004',
+        hiddenClaimCode: 'CLAIM-OOOPACKET-9F87ABCD',
+        claimCodeRevealState: 'revealed_once',
+        revealAction: 'claim_packet',
+      ),
     );
   }
 

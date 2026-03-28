@@ -15,6 +15,8 @@ class CatalogPanel extends StatelessWidget {
     required this.onCreateInventory,
     required this.onCreateAuthenticityRecord,
     required this.onUpsertListing,
+    required this.onRevealClaimCode,
+    required this.onGenerateClaimPacket,
     required this.onUploadInventoryImage,
     super.key,
   });
@@ -28,6 +30,8 @@ class CatalogPanel extends StatelessWidget {
   final VoidCallback onCreateInventory;
   final Future<void> Function(AdminInventoryRecord item) onCreateAuthenticityRecord;
   final Future<void> Function(AdminInventoryRecord item) onUpsertListing;
+  final Future<void> Function(AdminInventoryRecord item) onRevealClaimCode;
+  final Future<void> Function(AdminInventoryRecord item) onGenerateClaimPacket;
   final Future<void> Function(AdminInventoryRecord item) onUploadInventoryImage;
 
   static final ButtonStyle _compactActionStyle = FilledButton.styleFrom(
@@ -199,6 +203,9 @@ class CatalogPanel extends StatelessWidget {
                         DataColumn(label: Text('Price')),
                         DataColumn(label: Text('Visible')),
                         DataColumn(label: Text('Buy')),
+                        DataColumn(label: Text('QR')),
+                        DataColumn(label: Text('Claim')),
+                        DataColumn(label: Text('Packet')),
                         DataColumn(label: Text('Actions')),
                       ],
                       rows: inventory.map((AdminInventoryRecord item) {
@@ -264,14 +271,25 @@ class CatalogPanel extends StatelessWidget {
                               StatusPill(label: item.buyable ? 'yes' : 'no'),
                             ),
                             DataCell(
+                              StatusPill(label: item.qrReady ? 'ready' : 'no'),
+                            ),
+                            DataCell(
+                              StatusPill(label: item.claimCodeRevealState),
+                            ),
+                            DataCell(
+                              StatusPill(
+                                label: item.claimPacketReady ? 'ready' : 'hold',
+                              ),
+                            ),
+                            DataCell(
                               SizedBox(
-                                width: 220,
+                                width: 320,
                                 child: Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: <Widget>[
                                     if (!item.hasAuthenticityRecord)
-                                  FilledButton.tonal(
+                                      FilledButton.tonal(
                                         style: _compactActionStyle,
                                         onPressed: () =>
                                             onCreateAuthenticityRecord(item),
@@ -296,6 +314,18 @@ class CatalogPanel extends StatelessWidget {
                                         style: _compactActionStyle,
                                         onPressed: () => onUpsertListing(item),
                                         child: const Text('Publish'),
+                                      ),
+                                    if (item.claimCodeRevealState == 'ready')
+                                      FilledButton.tonal(
+                                        style: _compactActionStyle,
+                                        onPressed: () => onRevealClaimCode(item),
+                                        child: const Text('Reveal'),
+                                      ),
+                                    if (item.claimPacketReady)
+                                      FilledButton.tonal(
+                                        style: _compactActionStyle,
+                                        onPressed: () => onGenerateClaimPacket(item),
+                                        child: const Text('Packet'),
                                       ),
                                     if (item.listingStatus == 'active')
                                       const StatusPill(label: 'live'),

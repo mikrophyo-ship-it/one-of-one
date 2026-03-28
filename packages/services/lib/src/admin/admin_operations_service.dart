@@ -4,15 +4,14 @@ import 'package:data/data.dart';
 import 'package:domain/domain.dart';
 
 class AdminOperationsService {
-  const AdminOperationsService({required AdminOperationsRepository repository})
-    : _repository = repository;
+  const AdminOperationsService({required this.repository});
 
-  final AdminOperationsRepository _repository;
+  final AdminOperationsRepository repository;
 
-  AdminOperationsSnapshot? snapshot() => _repository.snapshot();
+  AdminOperationsSnapshot? snapshot() => repository.snapshot();
 
   Future<MarketplaceActionResult<AdminOperationsSnapshot>> refresh() {
-    return _repository.refresh();
+    return repository.refresh();
   }
 
   Future<MarketplaceActionResult<AdminDisputeRecord>> updateDisputeStatus({
@@ -22,7 +21,7 @@ class AdminOperationsService {
     required bool releaseItem,
     String? releaseTargetState,
   }) {
-    return _repository.updateDisputeStatus(
+    return repository.updateDisputeStatus(
       disputeId: disputeId,
       status: status,
       note: note,
@@ -36,7 +35,7 @@ class AdminOperationsService {
     required String action,
     required String note,
   }) {
-    return _repository.moderateListing(
+    return repository.moderateListing(
       listingId: listingId,
       action: action,
       note: note,
@@ -49,7 +48,7 @@ class AdminOperationsService {
     required Map<String, dynamic> marketplaceRules,
     required Map<String, dynamic> brandSettings,
   }) {
-    return _repository.updateSettings(
+    return repository.updateSettings(
       platformFeeBps: platformFeeBps,
       defaultRoyaltyBps: defaultRoyaltyBps,
       marketplaceRules: marketplaceRules,
@@ -61,7 +60,7 @@ class AdminOperationsService {
     required String userId,
     required String role,
   }) {
-    return _repository.setUserRole(userId: userId, role: role);
+    return repository.setUserRole(userId: userId, role: role);
   }
 
   Future<MarketplaceActionResult<AdminArtistRecord>> upsertArtist({
@@ -72,7 +71,7 @@ class AdminOperationsService {
     required String authenticityStatement,
     required bool isActive,
   }) {
-    return _repository.upsertArtist(
+    return repository.upsertArtist(
       artistId: artistId,
       displayName: displayName,
       slug: slug,
@@ -90,7 +89,7 @@ class AdminOperationsService {
     required List<String> provenanceProof,
     DateTime? creationDate,
   }) {
-    return _repository.upsertArtwork(
+    return repository.upsertArtwork(
       artworkId: artworkId,
       artistId: artistId,
       title: title,
@@ -108,7 +107,7 @@ class AdminOperationsService {
     required String serialNumber,
     required String itemState,
   }) {
-    return _repository.upsertInventoryItem(
+    return repository.upsertInventoryItem(
       itemId: itemId,
       artistId: artistId,
       artworkId: artworkId,
@@ -121,7 +120,7 @@ class AdminOperationsService {
   Future<MarketplaceActionResult<AdminInventoryRecord>> createAuthenticityRecord({
     required String itemId,
   }) {
-    return _repository.createAuthenticityRecord(itemId: itemId);
+    return repository.createAuthenticityRecord(itemId: itemId);
   }
 
   Future<MarketplaceActionResult<AdminInventoryRecord>> upsertInventoryListing({
@@ -129,11 +128,25 @@ class AdminOperationsService {
     required int askingPriceCents,
     required String status,
   }) {
-    return _repository.upsertInventoryListing(
+    return repository.upsertInventoryListing(
       itemId: itemId,
       askingPriceCents: askingPriceCents,
       status: status,
     );
+  }
+
+  Future<MarketplaceActionResult<AdminClaimPacketData>> revealItemClaimCode({
+    required String itemId,
+    required String reason,
+  }) {
+    return repository.revealItemClaimCode(itemId: itemId, reason: reason);
+  }
+
+  Future<MarketplaceActionResult<AdminClaimPacketData>> generateClaimPacket({
+    required String itemId,
+    required String reason,
+  }) {
+    return repository.generateClaimPacket(itemId: itemId, reason: reason);
   }
 
   Future<MarketplaceActionResult<void>> uploadInventoryImage({
@@ -142,7 +155,7 @@ class AdminOperationsService {
     required String fileName,
     required String contentType,
   }) {
-    return _repository.uploadInventoryImage(
+    return repository.uploadInventoryImage(
       itemId: itemId,
       bytes: bytes,
       fileName: fileName,
@@ -155,7 +168,7 @@ class AdminOperationsService {
     required String targetState,
     required String note,
   }) {
-    return _repository.flagItemStatus(
+    return repository.flagItemStatus(
       itemId: itemId,
       targetState: targetState,
       note: note,

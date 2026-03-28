@@ -11,6 +11,7 @@ import 'package:utils/utils.dart';
 
 import 'features/audit/audit_panel.dart';
 import 'features/catalog/catalog_panel.dart';
+import 'features/catalog/claim_operations_dialogs.dart';
 import 'features/customers/customers_panel.dart';
 import 'features/dashboard/overview_panel.dart';
 import 'features/disputes/disputes_panel.dart';
@@ -204,6 +205,8 @@ class _AdminShellState extends State<AdminShell> {
         onCreateInventory: _createInventory,
         onCreateAuthenticityRecord: _createAuthenticityRecord,
         onUpsertListing: _upsertListing,
+        onRevealClaimCode: _revealClaimCode,
+        onGenerateClaimPacket: _generateClaimPacket,
         onUploadInventoryImage: _uploadInventoryImage,
       ),
       AuditPanel(audits: _snapshot?.audits ?? const <AdminAuditRecord>[]),
@@ -575,6 +578,103 @@ class _AdminShellState extends State<AdminShell> {
       _snapshot = _adminService.snapshot();
       _bannerMessage = result.message;
       _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _revealClaimCode(AdminInventoryRecord item) async {
+    final String? reason = await promptSensitiveClaimReason(
+      context,
+      title: 'Reveal hidden claim code?',
+      body:
+          'This action is audited and can only reveal the existing hidden claim code once. '
+          'The code will not appear in normal inventory views after you close the secure dialog.',
+      confirmLabel: 'Reveal code',
+    );
+    if (reason == null) {
+      return;
+    }
+
+    final MarketplaceActionResult<AdminClaimPacketData> result =
+        await _adminService.revealItemClaimCode(
+          itemId: item.itemId,
+          reason: reason,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+    if (!result.success || result.data == null) {
+      return;
+    }
+
+    final bool? didPrint = await showClaimPacketDialog(
+      context,
+      result.data!,
+      title: 'Hidden claim code revealed',
+      subtitle:
+          'Handle this code privately and keep it separate from the public verification QR.',
+    );
+    if (!mounted || didPrint == null) {
+      return;
+    }
+    setState(() {
+      _bannerMessage = didPrint
+          ? 'Claim packet sent to the browser print workflow.'
+          : 'Claim packet printing is only available in the web admin console.';
+      _bannerIsError = !didPrint;
+    });
+  }
+
+  Future<void> _generateClaimPacket(AdminInventoryRecord item) async {
+    final String? reason = await promptSensitiveClaimReason(
+      context,
+      title: 'Generate printable claim packet?',
+      body:
+          'This audited action prepares the package insert with the public verification QR and the hidden claim code. '
+          'Packet generation is tracked separately and does not change the reveal state.',
+      confirmLabel: 'Generate packet',
+    );
+    if (reason == null) {
+      return;
+    }
+
+    final MarketplaceActionResult<AdminClaimPacketData> result =
+        await _adminService.generateClaimPacket(
+          itemId: item.itemId,
+          reason: reason,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+    if (!result.success || result.data == null) {
+      return;
+    }
+
+    final bool? didPrint = await showClaimPacketDialog(
+      context,
+      result.data!,
+      title: 'Printable claim packet',
+      subtitle:
+          'Print only when the package is ready. The public QR and hidden claim section must remain separate in handling.',
+      emphasizePrint: true,
+    );
+    if (!mounted || didPrint == null) {
+      return;
+    }
+    setState(() {
+      _bannerMessage = didPrint
+          ? 'Claim packet sent to the browser print workflow.'
+          : 'Claim packet printing is only available in the web admin console.';
+      _bannerIsError = !didPrint;
     });
   }
 

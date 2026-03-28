@@ -141,3 +141,15 @@ These public surfaces stay privacy-safe and do not expose hidden claim data.
 ## Remaining app integration work
 - Add camera-based QR scanning package wiring for device hardware capture and printable QR export polish.
 - Add deployed password-reset redirect URLs and production mobile deep-link handling refinements.
+
+
+## Admin Claim Operations
+- `admin_reveal_item_claim_code(p_item_id uuid, p_reason text)`
+  Admin-only, audited, one-time hidden claim code reveal for an eligible item. Requires a non-empty human operator reason. This uses the existing secure claim material and does not rotate the claim code.
+- `admin_generate_claim_packet(p_item_id uuid, p_reason text)`
+  Admin-only, audited printable claim-packet generator for an eligible item. Requires a non-empty human operator reason. Packet generation is tracked separately from reveal state and does not silently mark the code as revealed.
+- Inventory admin reads now include non-sensitive claim ops status only:
+  - `qr_ready`
+  - `claim_packet_ready`
+  - `claim_code_reveal_state`
+- Hidden claim code material is stored only in admin-restricted claim material storage and is never returned by public catalog, public authenticity, or normal inventory list payloads.
