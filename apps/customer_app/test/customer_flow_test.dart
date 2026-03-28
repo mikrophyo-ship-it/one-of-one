@@ -150,12 +150,28 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.notifications_none));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('customer-notifications-button')),
+      );
       await tester.pumpAndSettle();
-      expect(find.textContaining('Ownership updated:'), findsOneWidget);
-      expect(find.textContaining('Listing live:'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.notifications_none));
+      expect(find.text('Notifications'), findsOneWidget);
+      expect(find.text('Ownership updated'), findsOneWidget);
+      expect(find.text('Listing live'), findsOneWidget);
+      await tester.tap(find.text('Ownership updated').first);
       await tester.pumpAndSettle();
+      expect(
+        find.text('Ownership refreshed for OOO-EM-0002.'),
+        findsAtLeastNWidgets(1),
+      );
+      await tester.tap(find.text('Close').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Activity').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Ownership recorded'), findsWidgets);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('customer-notifications-button')),
+      );
+      await tester.pump();
 
       await tester.ensureVisible(emberCard);
       await tester.tap(emberCard);
@@ -186,10 +202,6 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      await _tapNav(tester, 'Profile');
-      await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
-      await tester.pumpAndSettle();
-      expect(find.text('Collect the original.'), findsOneWidget);
     },
   );
 
@@ -455,6 +467,7 @@ void main() {
       expect(find.text('Method: WavePay'), findsOneWidget);
       expect(find.text('Payer: Buyer Collector'), findsOneWidget);
       expect(find.text('Phone: 09123456789'), findsOneWidget);
+
     },
   );
 

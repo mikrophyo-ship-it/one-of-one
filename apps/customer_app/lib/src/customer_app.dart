@@ -93,7 +93,8 @@ class CustomerRoot extends StatefulWidget {
   State<CustomerRoot> createState() => _CustomerRootState();
 }
 
-class _CustomerRootState extends State<CustomerRoot> {
+class _CustomerRootState extends State<CustomerRoot>
+    with WidgetsBindingObserver {
   late final MarketplaceRepository repository;
   late final MarketplaceWorkflowService workflowService;
   late final SupabaseAuthService authService;
@@ -104,6 +105,7 @@ class _CustomerRootState extends State<CustomerRoot> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     repository = widget.repository ?? _defaultRepository();
     authService = widget.authService ?? _defaultAuthService();
     checkoutConfig =
@@ -182,8 +184,16 @@ class _CustomerRootState extends State<CustomerRoot> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(controller.handleAppResumed());
+    }
   }
 
   @override
@@ -205,15 +215,46 @@ class _CustomerRootState extends State<CustomerRoot> {
             title: const Text('ONE OF ONE'),
             actions: <Widget>[
               IconButton(
+                key: const ValueKey<String>('customer-notifications-button'),
                 onPressed: controller.toggleInbox,
-                icon: Row(
-                  mainAxisSize: MainAxisSize.min,
+                icon: Stack(
+                  clipBehavior: Clip.none,
                   children: <Widget>[
                     const Icon(Icons.notifications_none),
-                    const SizedBox(width: 6),
-                    Text('${controller.notifications.length}'),
+                    if (controller.unreadNotificationCount > 0)
+                      Positioned(
+                        right: -8,
+                        top: -8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: const Color(0xFF0D0D0D),
+                              width: 1.5,
+                            ),
+                          ),
+                          constraints: const BoxConstraints(minWidth: 18),
+                          child: Text(
+                            controller.unreadNotificationCount > 99
+                                ? '99+'
+                                : '${controller.unreadNotificationCount}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
+                tooltip: 'Notifications',
               ),
             ],
           ),
@@ -235,31 +276,8 @@ class _CustomerRootState extends State<CustomerRoot> {
               if (controller.showInbox)
                 Align(
                   alignment: Alignment.topRight,
-                  child: Container(
-                    width: 320,
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF151515),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: OneOfOneTheme.gold.withValues(alpha: 0.25),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: controller.notifications.isEmpty
-                          ? <Widget>[const Text('No new notifications.')]
-                          : controller.notifications
-                                .map(
-                                  (String note) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Text(note),
-                                  ),
-                                )
-                                .toList(),
-                    ),
+                  child: _NotificationCenterPanel(
+                    controller: controller,
                   ),
                 ),
               if (controller.isBusy)
@@ -327,6 +345,7 @@ class CustomerController extends ChangeNotifier {
 
   StreamSubscription<AuthState>? _authSubscription;
   StreamSubscription<Uri>? _authenticityLinkSubscription;
+  StreamSubscription<void>? _liveSyncSubscription;
 
   bool isInitializing = true;
   bool isAuthenticated = false;
@@ -345,6 +364,7 @@ class CustomerController extends ChangeNotifier {
   List<CollectorNotification> notificationFeed = const <CollectorNotification>[];
   Set<String> savedItemIds = <String>{};
   String? _lastResolvedAuthenticityToken;
+  bool _isLiveRefreshInFlight = false;
 
   bool get authConfigured => _authService.isConfigured;
 
@@ -355,6 +375,8 @@ class CustomerController extends ChangeNotifier {
   List<String> get notifications => notificationFeed
       .map((CollectorNotification item) => '${item.title}: ${item.body}')
       .toList(growable: false);
+  int get unreadNotificationCount =>
+      notificationFeed.where((CollectorNotification item) => !item.read).length;
   List<UniqueItem> get vaultItems => items
       .where((UniqueItem item) => item.currentOwnerUserId == currentUserId)
       .toList();
@@ -364,6 +386,7 @@ class CustomerController extends ChangeNotifier {
   List<ItemComment> commentsFor(String itemId) => _repository.commentsForItem(itemId);
   ManualPaymentOrder? manualPaymentFor(String itemId) =>
       _repository.manualPaymentForItem(itemId);
+  List<_ActivityEntry> get activityLog => _buildActivityLog();
 
   Future<void> initialize() async {
     _authSubscription ??= _authService.authStateChanges().listen((AuthState _) {
@@ -554,6 +577,52 @@ class CustomerController extends ChangeNotifier {
 
   void toggleInbox() {
     showInbox = !showInbox;
+    if (showInbox && isAuthenticated && currentUserId.isNotEmpty) {
+      unawaited(_refreshCompanionData(notify: true));
+    }
+    notifyListeners();
+  }
+
+  Future<void> handleAppResumed() async {
+    if (!isAuthenticated || currentUserId.isEmpty) {
+      return;
+    }
+    await _refreshLiveData(showBusy: false, preserveStatus: true);
+  }
+
+  Future<void> markNotificationRead(String notificationId) async {
+    if (notificationId.trim().isEmpty) {
+      return;
+    }
+    final CollectorNotification? existing = notificationFeed
+        .where((CollectorNotification item) => item.id == notificationId)
+        .cast<CollectorNotification?>()
+        .firstWhere(
+          (CollectorNotification? item) => item != null,
+          orElse: () => null,
+        );
+    if (existing == null || existing.read) {
+      return;
+    }
+    final MarketplaceActionResult<void> result = await _workflowService
+        .markNotificationsRead(notificationIds: <String>[notificationId]);
+    if (!result.success) {
+      return;
+    }
+    notificationFeed = notificationFeed
+        .map((CollectorNotification item) {
+          if (item.id != notificationId) {
+            return item;
+          }
+          return CollectorNotification(
+            id: item.id,
+            title: item.title,
+            body: item.body,
+            createdAt: item.createdAt,
+            read: true,
+          );
+        })
+        .toList(growable: false);
     notifyListeners();
   }
 
@@ -1020,6 +1089,8 @@ class CustomerController extends ChangeNotifier {
     errorMessage = null;
 
     if (user == null) {
+      await _liveSyncSubscription?.cancel();
+      _liveSyncSubscription = null;
       currentUserId = '';
       currentUserEmail = null;
       currentDisplayName = null;
@@ -1044,6 +1115,7 @@ class CustomerController extends ChangeNotifier {
     currentDisplayName = _displayNameForUser(user);
     await _repository.refresh(userId: user.id);
     await _refreshCompanionData();
+    _startLiveSync(user.id);
     isAuthenticated = true;
     isInitializing = false;
     isBusy = false;
@@ -1104,11 +1176,25 @@ class CustomerController extends ChangeNotifier {
     return 'Collector';
   }
 
-  Future<void> _refreshCompanionData() async {
+  Future<void> _refreshCompanionData({bool notify = false}) async {
     final MarketplaceActionResult<List<CollectorNotification>> notifications =
         await _workflowService.fetchNotifications();
     if (notifications.success && notifications.data != null) {
-      notificationFeed = notifications.data!;
+      final List<CollectorNotification> localOnly = notificationFeed
+          .where((CollectorNotification item) => item.id.startsWith('local-'))
+          .toList(growable: false);
+      final Set<String> serverIds = notifications.data!
+          .map((CollectorNotification item) => item.id)
+          .toSet();
+      notificationFeed = <CollectorNotification>[
+        ...localOnly.where(
+          (CollectorNotification item) => !serverIds.contains(item.id),
+        ),
+        ...notifications.data!,
+      ]..sort(
+          (CollectorNotification a, CollectorNotification b) =>
+              b.createdAt.compareTo(a.createdAt),
+        );
     }
 
     final MarketplaceActionResult<List<SavedCollectible>> saved =
@@ -1117,6 +1203,9 @@ class CustomerController extends ChangeNotifier {
       savedItemIds = saved.data!
           .map((SavedCollectible item) => item.itemId)
           .toSet();
+    }
+    if (notify) {
+      notifyListeners();
     }
   }
 
@@ -1140,7 +1229,139 @@ class CustomerController extends ChangeNotifier {
   void dispose() {
     _authSubscription?.cancel();
     _authenticityLinkSubscription?.cancel();
+    _liveSyncSubscription?.cancel();
     super.dispose();
+  }
+
+  void _startLiveSync(String userId) {
+    _liveSyncSubscription?.cancel();
+    _liveSyncSubscription = _workflowService
+        .watchCustomerData(userId: userId)
+        .listen((_) {
+          unawaited(_refreshLiveData(showBusy: false, preserveStatus: true));
+        });
+  }
+
+  Future<void> _refreshLiveData({
+    required bool showBusy,
+    required bool preserveStatus,
+  }) async {
+    if (_isLiveRefreshInFlight || currentUserId.isEmpty) {
+      return;
+    }
+    _isLiveRefreshInFlight = true;
+    final String? previousStatus = statusMessage;
+    final String? previousError = errorMessage;
+    if (showBusy) {
+      isBusy = true;
+      notifyListeners();
+    }
+    try {
+      await _repository.refresh(userId: currentUserId);
+      await _refreshCompanionData();
+      if (preserveStatus) {
+        statusMessage = previousStatus;
+        errorMessage = previousError;
+      }
+      notifyListeners();
+    } finally {
+      if (showBusy) {
+        isBusy = false;
+        notifyListeners();
+      }
+      _isLiveRefreshInFlight = false;
+    }
+  }
+
+  List<_ActivityEntry> _buildActivityLog() {
+    final List<_ActivityEntry> entries = <_ActivityEntry>[];
+
+    for (final CollectorNotification notification in notificationFeed) {
+      entries.add(
+        _ActivityEntry(
+          id: 'notification-${notification.id}',
+          title: notification.title,
+          detail: notification.body,
+          occurredAt: notification.createdAt,
+          category: _notificationCategory(notification),
+          status: notification.read ? 'read' : 'unread',
+        ),
+      );
+    }
+
+    for (final UniqueItem item in items) {
+      final ManualPaymentOrder? paymentOrder = manualPaymentFor(item.id);
+      if (paymentOrder != null) {
+        entries.add(
+          _ActivityEntry(
+            id: 'payment-order-${paymentOrder.orderId}',
+            title: 'Payment flow started',
+            detail:
+                'Reference ${paymentOrder.paymentReference} for ${item.serialNumber}.',
+            occurredAt: paymentOrder.createdAt,
+            category: 'payment',
+            status: paymentOrder.orderStatus,
+          ),
+        );
+        if (paymentOrder.submittedAt != null) {
+          entries.add(
+            _ActivityEntry(
+              id: 'payment-submitted-${paymentOrder.orderId}',
+              title: 'Payment proof submitted',
+              detail:
+                  '${paymentOrder.paymentMethod ?? 'Manual transfer'} for ${item.serialNumber}.',
+              occurredAt: paymentOrder.submittedAt!,
+              category: 'payment',
+              status: paymentOrder.reviewStatus ?? paymentOrder.paymentStatus,
+            ),
+          );
+        }
+        if (paymentOrder.reviewedAt != null) {
+          entries.add(
+            _ActivityEntry(
+              id: 'payment-reviewed-${paymentOrder.orderId}',
+              title: _manualPaymentStatusLabel(paymentOrder),
+              detail: _manualPaymentStatusMessage(paymentOrder),
+              occurredAt: paymentOrder.reviewedAt!,
+              category: 'payment',
+              status: paymentOrder.reviewStatus ?? paymentOrder.paymentStatus,
+            ),
+          );
+        }
+      }
+
+      for (final OwnershipRecord history in historyFor(item.id)) {
+        entries.add(
+          _ActivityEntry(
+            id: 'ownership-${history.id}-acquired',
+            title: 'Ownership recorded',
+            detail: '${item.serialNumber} was added to your collector history.',
+            occurredAt: history.acquiredAt,
+            category: 'claim',
+            status: 'acquired',
+          ),
+        );
+        if (history.relinquishedAt != null) {
+          entries.add(
+            _ActivityEntry(
+              id: 'ownership-${history.id}-relinquished',
+              title: 'Ownership transferred',
+              detail:
+                  '${item.serialNumber} left your collector history after an on-platform transfer.',
+              occurredAt: history.relinquishedAt!,
+              category: 'resale',
+              status: 'transferred',
+            ),
+          );
+        }
+      }
+    }
+
+    entries.sort(
+      (_ActivityEntry a, _ActivityEntry b) =>
+          b.occurredAt.compareTo(a.occurredAt),
+    );
+    return entries;
   }
 }
 
@@ -2887,6 +3108,349 @@ String _contentTypeForProofFileName(String fileName) {
     return 'image/gif';
   }
   return 'image/jpeg';
+}
+
+String _notificationCategory(CollectorNotification notification) {
+  final String haystack =
+      '${notification.title} ${notification.body}'.toLowerCase();
+  if (haystack.contains('payment') ||
+      haystack.contains('proof') ||
+      haystack.contains('review')) {
+    return 'payment';
+  }
+  if (haystack.contains('ship') ||
+      haystack.contains('delivery') ||
+      haystack.contains('tracking')) {
+    return 'shipping';
+  }
+  if (haystack.contains('claim') || haystack.contains('ownership')) {
+    return 'claim';
+  }
+  if (haystack.contains('listing') ||
+      haystack.contains('resale') ||
+      haystack.contains('order')) {
+    return 'resale';
+  }
+  return 'general';
+}
+
+String _formatCustomerTimestamp(DateTime timestamp) {
+  final DateTime local = timestamp.toLocal();
+  final String twoDigitMonth = local.month.toString().padLeft(2, '0');
+  final String twoDigitDay = local.day.toString().padLeft(2, '0');
+  final String twoDigitHour = local.hour.toString().padLeft(2, '0');
+  final String twoDigitMinute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$twoDigitMonth-$twoDigitDay $twoDigitHour:$twoDigitMinute';
+}
+
+class _ActivityEntry {
+  const _ActivityEntry({
+    required this.id,
+    required this.title,
+    required this.detail,
+    required this.occurredAt,
+    required this.category,
+    required this.status,
+  });
+
+  final String id;
+  final String title;
+  final String detail;
+  final DateTime occurredAt;
+  final String category;
+  final String status;
+}
+
+class _NotificationCenterPanel extends StatelessWidget {
+  const _NotificationCenterPanel({required this.controller});
+
+  final CustomerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 380,
+      height: 520,
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF151515),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: OneOfOneTheme.gold.withValues(alpha: 0.25),
+        ),
+      ),
+      child: DefaultTabController(
+        length: 2,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Notifications',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ),
+                if (controller.unreadNotificationCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text('${controller.unreadNotificationCount} unread'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const TabBar(
+              tabs: <Widget>[
+                Tab(text: 'Inbox'),
+                Tab(text: 'Activity'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: TabBarView(
+                children: <Widget>[
+                  controller.notificationFeed.isEmpty
+                      ? const Center(child: Text('No notifications yet.'))
+                      : ListView.separated(
+                          itemCount: controller.notificationFeed.length,
+                          separatorBuilder: (_, _) => Divider(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
+                          itemBuilder: (BuildContext context, int index) {
+                            final CollectorNotification notification =
+                                controller.notificationFeed[index];
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              onTap: () async {
+                                await controller.markNotificationRead(
+                                  notification.id,
+                                );
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                await showModalBottomSheet<void>(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: const Color(0xFF14110D),
+                                  builder: (BuildContext context) {
+                                    return _NotificationDetailSheet(
+                                      notification: notification.copyWithRead(),
+                                      latestPaymentOrder:
+                                          controller.activityLog.isEmpty
+                                          ? null
+                                          : controller.items
+                                                .map(
+                                                  (UniqueItem item) =>
+                                                      controller.manualPaymentFor(
+                                                        item.id,
+                                                      ),
+                                                )
+                                                .whereType<ManualPaymentOrder>()
+                                                .fold<ManualPaymentOrder?>(
+                                                  null,
+                                                  (
+                                                    ManualPaymentOrder? latest,
+                                                    ManualPaymentOrder current,
+                                                  ) {
+                                                    if (latest == null) {
+                                                      return current;
+                                                    }
+                                                    return current.createdAt
+                                                            .isAfter(
+                                                              latest.createdAt,
+                                                            )
+                                                        ? current
+                                                        : latest;
+                                                  },
+                                                ),
+                                    );
+                                  },
+                                );
+                              },
+                              leading: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: notification.read
+                                      ? Colors.transparent
+                                      : Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: notification.read
+                                        ? Colors.white.withValues(alpha: 0.2)
+                                        : Colors.redAccent,
+                                  ),
+                                ),
+                              ),
+                              title: Text(notification.title),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    notification.body,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _formatCustomerTimestamp(
+                                      notification.createdAt,
+                                    ),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                  controller.activityLog.isEmpty
+                      ? const Center(child: Text('No activity yet.'))
+                      : ListView.separated(
+                          itemCount: controller.activityLog.length,
+                          separatorBuilder: (_, _) => Divider(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
+                          itemBuilder: (BuildContext context, int index) {
+                            final _ActivityEntry entry =
+                                controller.activityLog[index];
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(entry.title),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  const SizedBox(height: 4),
+                                  Text(entry.detail, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${entry.category} • ${_formatCustomerTimestamp(entry.occurredAt)}',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                              trailing: Text(entry.status),
+                            );
+                          },
+                        ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+extension on CollectorNotification {
+  CollectorNotification copyWithRead() {
+    return CollectorNotification(
+      id: id,
+      title: title,
+      body: body,
+      createdAt: createdAt,
+      read: true,
+    );
+  }
+}
+
+class _NotificationDetailSheet extends StatelessWidget {
+  const _NotificationDetailSheet({
+    required this.notification,
+    required this.latestPaymentOrder,
+  });
+
+  final CollectorNotification notification;
+  final ManualPaymentOrder? latestPaymentOrder;
+
+  @override
+  Widget build(BuildContext context) {
+    final EdgeInsets bottomInset = EdgeInsets.only(
+      bottom: MediaQuery.of(context).viewInsets.bottom,
+    );
+    final String category = _notificationCategory(notification);
+    return SafeArea(
+      child: Padding(
+        padding: bottomInset,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      notification.title,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: OneOfOneTheme.gold.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(category),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(_formatCustomerTimestamp(notification.createdAt)),
+              const SizedBox(height: 16),
+              Text(notification.body),
+              if (latestPaymentOrder != null &&
+                  (category == 'payment' || category == 'resale')) ...<Widget>[
+                const SizedBox(height: 20),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Current order context',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text('Order ref ${latestPaymentOrder!.paymentReference}'),
+                        Text('Order status: ${latestPaymentOrder!.orderStatus}'),
+                        Text('Payment status: ${latestPaymentOrder!.paymentStatus}'),
+                        if (latestPaymentOrder!.reviewStatus != null)
+                          Text('Review status: ${latestPaymentOrder!.reviewStatus}'),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _CommentsSection extends StatefulWidget {
