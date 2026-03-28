@@ -242,6 +242,7 @@ class AdminInventoryRecord {
   const AdminInventoryRecord({
     required this.itemId,
     required this.serialNumber,
+    required this.createdAt,
     required this.artistName,
     required this.artworkTitle,
     required this.garmentName,
@@ -262,6 +263,7 @@ class AdminInventoryRecord {
 
   final String itemId;
   final String serialNumber;
+  final DateTime createdAt;
   final String artistName;
   final String artworkTitle;
   final String garmentName;

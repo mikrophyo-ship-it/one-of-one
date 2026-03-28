@@ -48,7 +48,6 @@ class CatalogPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ScrollController inventoryScrollController = ScrollController();
     return ListView(
       padding: const EdgeInsets.all(20),
       children: <Widget>[
@@ -186,225 +185,503 @@ class CatalogPanel extends StatelessWidget {
           title: 'Inventory',
           child: inventory.isEmpty
               ? const EmptyState(message: 'No inventory available.')
-              : Scrollbar(
-                  controller: inventoryScrollController,
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: inventoryScrollController,
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      horizontalMargin: 12,
-                      columnSpacing: 16,
-                      dataRowMinHeight: 64,
-                      dataRowMaxHeight: 96,
-                      columns: const <DataColumn>[
-                        DataColumn(label: Text('Serial')),
-                        DataColumn(label: Text('Artist / work')),
-                        DataColumn(label: Text('Garment')),
-                        DataColumn(label: Text('State')),
-                        DataColumn(label: Text('Owner')),
-                        DataColumn(label: Text('Auth')),
-                        DataColumn(label: Text('Listing')),
-                        DataColumn(label: Text('Price')),
-                        DataColumn(label: Text('Visible')),
-                        DataColumn(label: Text('Buy')),
-                        DataColumn(label: Text('QR')),
-                        DataColumn(label: Text('Claim')),
-                        DataColumn(label: Text('Packet')),
-                        DataColumn(label: Text('Photo')),
-                        DataColumn(label: Text('Actions')),
-                      ],
-                      rows: inventory.map((AdminInventoryRecord item) {
-                        final bool photoBusy = busyInventoryItemIds.contains(
-                          item.itemId,
-                        );
-                        return DataRow(
-                          cells: <DataCell>[
-                            DataCell(Text(item.serialNumber)),
-                            DataCell(
-                              SizedBox(
-                                width: 180,
-                                child: Text(
-                                  '${item.artistName} / ${item.artworkTitle}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              SizedBox(
-                                width: 120,
-                                child: Text(
-                                  item.garmentName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            DataCell(StatusPill(label: item.itemState)),
-                            DataCell(
-                              SizedBox(
-                                width: 120,
-                                child: Text(
-                                  item.ownerDisplayLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              StatusPill(
-                                label: item.hasAuthenticityRecord
-                                    ? (item.authenticityStatus ?? 'linked')
-                                    : 'missing',
-                              ),
-                            ),
-                            DataCell(
-                              item.listingStatus == null
-                                  ? const Text('None')
-                                  : StatusPill(label: item.listingStatus!),
-                            ),
-                            DataCell(
-                              Text(
-                                item.askingPriceCents == null
-                                    ? 'n/a'
-                                    : formatCurrency(item.askingPriceCents!),
-                              ),
-                            ),
-                            DataCell(
-                              StatusPill(
-                                label: item.customerVisible ? 'yes' : 'no',
-                              ),
-                            ),
-                            DataCell(
-                              StatusPill(label: item.buyable ? 'yes' : 'no'),
-                            ),
-                            DataCell(
-                              StatusPill(label: item.qrReady ? 'ready' : 'no'),
-                            ),
-                            DataCell(
-                              StatusPill(label: item.claimCodeRevealState),
-                            ),
-                            DataCell(
-                              StatusPill(
-                                label: item.claimPacketReady ? 'ready' : 'hold',
-                              ),
-                            ),
-                            DataCell(
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  Icon(
-                                    item.hasEditorialImage
-                                        ? Icons.image_rounded
-                                        : Icons.image_not_supported_outlined,
-                                    size: 18,
-                                    color: item.hasEditorialImage
-                                        ? const Color(0xFFD4AF37)
-                                        : Colors.white54,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    item.hasEditorialImage
-                                        ? 'Photo attached'
-                                        : 'No photo',
-                                  ),
-                                  if (photoBusy) ...<Widget>[
-                                    const SizedBox(width: 8),
-                                    const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            DataCell(
-                              SizedBox(
-                                width: 360,
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: <Widget>[
-                                    if (!item.hasAuthenticityRecord)
-                                      FilledButton.tonal(
-                                        style: _compactActionStyle,
-                                        onPressed: () =>
-                                            onCreateAuthenticityRecord(item),
-                                        child: const Text('Link'),
-                                      ),
-                                    if (!item.hasEditorialImage)
-                                      FilledButton.tonalIcon(
-                                        style: _compactActionStyle,
-                                        onPressed: photoBusy
-                                            ? null
-                                            : () =>
-                                                  onUploadInventoryImage(item),
-                                        icon: const Icon(
-                                          Icons.add_a_photo_outlined,
-                                          size: 18,
-                                        ),
-                                        label: const Text('Upload photo'),
-                                      ),
-                                    if (item.hasEditorialImage)
-                                      FilledButton.tonalIcon(
-                                        style: _compactActionStyle,
-                                        onPressed: photoBusy
-                                            ? null
-                                            : () =>
-                                                  onRemoveInventoryImage(item),
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 18,
-                                        ),
-                                        label: const Text('Remove photo'),
-                                      ),
-                                    if (item.hasAuthenticityRecord &&
-                                        item.listingStatus == null)
-                                      FilledButton.tonal(
-                                        style: _compactActionStyle,
-                                        onPressed: () => onUpsertListing(item),
-                                        child: const Text('List'),
-                                      ),
-                                    if (item.hasAuthenticityRecord &&
-                                        item.listingStatus != null &&
-                                        item.listingStatus != 'active')
-                                      FilledButton.tonal(
-                                        style: _compactActionStyle,
-                                        onPressed: () => onUpsertListing(item),
-                                        child: const Text('Publish'),
-                                      ),
-                                    if (item.claimCodeRevealState == 'ready')
-                                      FilledButton.tonal(
-                                        style: _compactActionStyle,
-                                        onPressed: () =>
-                                            onRevealClaimCode(item),
-                                        child: const Text('Reveal'),
-                                      ),
-                                    if (item.claimPacketReady)
-                                      FilledButton.tonal(
-                                        style: _compactActionStyle,
-                                        onPressed: () =>
-                                            onGenerateClaimPacket(item),
-                                        child: const Text('Packet'),
-                                      ),
-                                    if (item.listingStatus == 'active')
-                                      const StatusPill(label: 'live'),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    ),
-                  ),
+              : _InventorySection(
+                  inventory: inventory,
+                  busyInventoryItemIds: busyInventoryItemIds,
+                  onCreateAuthenticityRecord: onCreateAuthenticityRecord,
+                  onUpsertListing: onUpsertListing,
+                  onRevealClaimCode: onRevealClaimCode,
+                  onGenerateClaimPacket: onGenerateClaimPacket,
+                  onUploadInventoryImage: onUploadInventoryImage,
+                  onRemoveInventoryImage: onRemoveInventoryImage,
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _InventorySection extends StatefulWidget {
+  const _InventorySection({
+    required this.inventory,
+    required this.busyInventoryItemIds,
+    required this.onCreateAuthenticityRecord,
+    required this.onUpsertListing,
+    required this.onRevealClaimCode,
+    required this.onGenerateClaimPacket,
+    required this.onUploadInventoryImage,
+    required this.onRemoveInventoryImage,
+  });
+
+  final List<AdminInventoryRecord> inventory;
+  final Set<String> busyInventoryItemIds;
+  final Future<void> Function(AdminInventoryRecord item)
+  onCreateAuthenticityRecord;
+  final Future<void> Function(AdminInventoryRecord item) onUpsertListing;
+  final Future<void> Function(AdminInventoryRecord item) onRevealClaimCode;
+  final Future<void> Function(AdminInventoryRecord item) onGenerateClaimPacket;
+  final Future<void> Function(AdminInventoryRecord item) onUploadInventoryImage;
+  final Future<void> Function(AdminInventoryRecord item) onRemoveInventoryImage;
+
+  @override
+  State<_InventorySection> createState() => _InventorySectionState();
+}
+
+class _InventorySectionState extends State<_InventorySection> {
+  static const String _allArtists = '__all_artists__';
+  static const String _allOwners = '__all_owners__';
+  static const String _allStates = '__all_states__';
+
+  String _searchQuery = '';
+  String _artistFilter = _allArtists;
+  String _ownerFilter = _allOwners;
+  String _stateFilter = _allStates;
+  _InventorySortOption _sortOption = _InventorySortOption.newestFirst;
+
+  @override
+  Widget build(BuildContext context) {
+    final ScrollController inventoryScrollController = ScrollController();
+    final List<String> artistOptions =
+        widget.inventory
+            .map((AdminInventoryRecord item) => item.artistName)
+            .toSet()
+            .toList()
+          ..sort();
+    final List<String> ownerOptions =
+        widget.inventory
+            .map((AdminInventoryRecord item) => item.ownerDisplayLabel)
+            .toSet()
+            .toList()
+          ..sort();
+    final List<String> stateOptions =
+        widget.inventory
+            .map((AdminInventoryRecord item) => item.itemState)
+            .toSet()
+            .toList()
+          ..sort();
+    final List<AdminInventoryRecord> filteredInventory = _filteredInventory();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: <Widget>[
+            SizedBox(
+              width: 260,
+              child: TextField(
+                onChanged: (String value) {
+                  setState(() {
+                    _searchQuery = value.trim().toLowerCase();
+                  });
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Search inventory',
+                  hintText: 'Serial, artwork, garment, owner',
+                  prefixIcon: Icon(Icons.search),
+                ),
+              ),
+            ),
+            _FilterDropdown(
+              label: 'Artist',
+              value: _artistFilter,
+              options: <String>[_allArtists, ...artistOptions],
+              optionLabel: (String value) =>
+                  value == _allArtists ? 'All artists' : value,
+              onChanged: (String value) {
+                setState(() {
+                  _artistFilter = value;
+                });
+              },
+            ),
+            _FilterDropdown(
+              label: 'Owner',
+              value: _ownerFilter,
+              options: <String>[_allOwners, ...ownerOptions],
+              optionLabel: (String value) =>
+                  value == _allOwners ? 'All owners' : value,
+              onChanged: (String value) {
+                setState(() {
+                  _ownerFilter = value;
+                });
+              },
+            ),
+            _FilterDropdown(
+              label: 'State',
+              value: _stateFilter,
+              options: <String>[_allStates, ...stateOptions],
+              optionLabel: (String value) =>
+                  value == _allStates ? 'All states' : value,
+              onChanged: (String value) {
+                setState(() {
+                  _stateFilter = value;
+                });
+              },
+            ),
+            _FilterDropdown(
+              label: 'Sort',
+              value: _sortOption.name,
+              options: _InventorySortOption.values
+                  .map((_InventorySortOption option) => option.name)
+                  .toList(),
+              optionLabel: (String value) => _sortLabel(
+                _InventorySortOption.values.firstWhere(
+                  (_InventorySortOption option) => option.name == value,
+                ),
+              ),
+              onChanged: (String value) {
+                setState(() {
+                  _sortOption = _InventorySortOption.values.firstWhere(
+                    (_InventorySortOption option) => option.name == value,
+                  );
+                });
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[
+            _SummaryChip(
+              label:
+                  'Showing ${filteredInventory.length} of ${widget.inventory.length}',
+            ),
+            _SummaryChip(
+              label:
+                  '${filteredInventory.where((AdminInventoryRecord item) => item.hasAuthenticityRecord).length} authenticated',
+            ),
+            _SummaryChip(
+              label:
+                  '${filteredInventory.where((AdminInventoryRecord item) => item.hasEditorialImage).length} with photo',
+            ),
+            _SummaryChip(
+              label:
+                  '${filteredInventory.where((AdminInventoryRecord item) => item.listingStatus == 'active').length} live listings',
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (filteredInventory.isEmpty)
+          const EmptyState(
+            message:
+                'No inventory items match the current search and filter settings.',
+          )
+        else
+          Scrollbar(
+            controller: inventoryScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: inventoryScrollController,
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                horizontalMargin: 10,
+                columnSpacing: 18,
+                headingRowHeight: 46,
+                dataRowMinHeight: 96,
+                dataRowMaxHeight: 136,
+                columns: const <DataColumn>[
+                  DataColumn(label: Text('Item')),
+                  DataColumn(label: Text('Owner')),
+                  DataColumn(label: Text('State')),
+                  DataColumn(label: Text('Readiness')),
+                  DataColumn(label: Text('Price')),
+                  DataColumn(label: Text('Created')),
+                  DataColumn(label: Text('Actions')),
+                ],
+                rows: filteredInventory.map((AdminInventoryRecord item) {
+                  final bool photoBusy = widget.busyInventoryItemIds.contains(
+                    item.itemId,
+                  );
+                  return DataRow(
+                    cells: <DataCell>[
+                      DataCell(
+                        SizedBox(
+                          width: 290,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                item.serialNumber,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${item.artistName} / ${item.artworkTitle}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.garmentName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      DataCell(
+                        SizedBox(
+                          width: 150,
+                          child: Text(
+                            item.ownerDisplayLabel,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      DataCell(StatusPill(label: item.itemState)),
+                      DataCell(
+                        SizedBox(
+                          width: 280,
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: <Widget>[
+                              StatusPill(
+                                label: item.hasAuthenticityRecord
+                                    ? (item.authenticityStatus ?? 'linked')
+                                    : 'missing auth',
+                              ),
+                              StatusPill(
+                                label: item.listingStatus ?? 'unlisted',
+                              ),
+                              StatusPill(
+                                label: item.hasEditorialImage
+                                    ? 'Photo attached'
+                                    : 'No photo',
+                              ),
+                              StatusPill(
+                                label: item.customerVisible
+                                    ? 'Visible'
+                                    : 'Hidden',
+                              ),
+                              StatusPill(
+                                label: item.qrReady ? 'QR ready' : 'QR pending',
+                              ),
+                              if (item.claimPacketReady)
+                                const StatusPill(label: 'Packet ready'),
+                              if (item.buyable)
+                                const StatusPill(label: 'Buyable'),
+                              if (photoBusy)
+                                const StatusPill(label: 'Updating'),
+                            ],
+                          ),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          item.askingPriceCents == null
+                              ? 'n/a'
+                              : formatCurrency(item.askingPriceCents!),
+                        ),
+                      ),
+                      DataCell(Text(formatAdminDate(item.createdAt))),
+                      DataCell(
+                        SizedBox(
+                          width: 300,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              if (!item.hasAuthenticityRecord)
+                                FilledButton.tonal(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: () =>
+                                      widget.onCreateAuthenticityRecord(item),
+                                  child: const Text('Link'),
+                                ),
+                              if (!item.hasEditorialImage)
+                                FilledButton.tonalIcon(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: photoBusy
+                                      ? null
+                                      : () =>
+                                            widget.onUploadInventoryImage(item),
+                                  icon: const Icon(
+                                    Icons.add_a_photo_outlined,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Upload'),
+                                ),
+                              if (item.hasEditorialImage)
+                                FilledButton.tonalIcon(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: photoBusy
+                                      ? null
+                                      : () =>
+                                            widget.onRemoveInventoryImage(item),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Remove'),
+                                ),
+                              if (item.hasAuthenticityRecord &&
+                                  item.listingStatus == null)
+                                FilledButton.tonal(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: () => widget.onUpsertListing(item),
+                                  child: const Text('List'),
+                                ),
+                              if (item.hasAuthenticityRecord &&
+                                  item.listingStatus != null &&
+                                  item.listingStatus != 'active')
+                                FilledButton.tonal(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: () => widget.onUpsertListing(item),
+                                  child: const Text('Publish'),
+                                ),
+                              if (item.claimCodeRevealState == 'ready')
+                                FilledButton.tonal(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: () =>
+                                      widget.onRevealClaimCode(item),
+                                  child: const Text('Reveal'),
+                                ),
+                              if (item.claimPacketReady)
+                                FilledButton.tonal(
+                                  style: CatalogPanel._compactActionStyle,
+                                  onPressed: () =>
+                                      widget.onGenerateClaimPacket(item),
+                                  child: const Text('Packet'),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  List<AdminInventoryRecord> _filteredInventory() {
+    final List<AdminInventoryRecord> filtered = widget.inventory.where((
+      AdminInventoryRecord item,
+    ) {
+      final bool matchesQuery =
+          _searchQuery.isEmpty ||
+          <String>[
+            item.serialNumber,
+            item.artistName,
+            item.artworkTitle,
+            item.garmentName,
+            item.ownerDisplayLabel,
+            item.itemState,
+          ].join(' ').toLowerCase().contains(_searchQuery);
+      final bool matchesArtist =
+          _artistFilter == _allArtists || item.artistName == _artistFilter;
+      final bool matchesOwner =
+          _ownerFilter == _allOwners || item.ownerDisplayLabel == _ownerFilter;
+      final bool matchesState =
+          _stateFilter == _allStates || item.itemState == _stateFilter;
+      return matchesQuery && matchesArtist && matchesOwner && matchesState;
+    }).toList();
+
+    filtered.sort((AdminInventoryRecord a, AdminInventoryRecord b) {
+      return switch (_sortOption) {
+        _InventorySortOption.newestFirst => b.createdAt.compareTo(a.createdAt),
+        _InventorySortOption.oldestFirst => a.createdAt.compareTo(b.createdAt),
+        _InventorySortOption.serialAz => a.serialNumber.compareTo(
+          b.serialNumber,
+        ),
+        _InventorySortOption.artistAz => a.artistName.compareTo(b.artistName),
+        _InventorySortOption.ownerAz => a.ownerDisplayLabel.compareTo(
+          b.ownerDisplayLabel,
+        ),
+      };
+    });
+    return filtered;
+  }
+
+  String _sortLabel(_InventorySortOption option) {
+    return switch (option) {
+      _InventorySortOption.newestFirst => 'Newest first',
+      _InventorySortOption.oldestFirst => 'Oldest first',
+      _InventorySortOption.serialAz => 'Serial A-Z',
+      _InventorySortOption.artistAz => 'Artist A-Z',
+      _InventorySortOption.ownerAz => 'Owner A-Z',
+    };
+  }
+}
+
+enum _InventorySortOption {
+  newestFirst,
+  oldestFirst,
+  serialAz,
+  artistAz,
+  ownerAz,
+}
+
+class _FilterDropdown extends StatelessWidget {
+  const _FilterDropdown({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.optionLabel,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final List<String> options;
+  final String Function(String value) optionLabel;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 190,
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: label),
+        items: options
+            .map(
+              (String option) => DropdownMenuItem<String>(
+                value: option,
+                child: Text(
+                  optionLabel(option),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+            .toList(),
+        onChanged: (String? nextValue) {
+          if (nextValue != null) {
+            onChanged(nextValue);
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _SummaryChip extends StatelessWidget {
+  const _SummaryChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: const Color(0xFF23201A),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Text(label, style: Theme.of(context).textTheme.bodySmall),
     );
   }
 }

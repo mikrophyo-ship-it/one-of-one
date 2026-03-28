@@ -10,6 +10,69 @@ import 'package:services/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  testWidgets('admin catalog filters and sorts inventory operationally', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final _FakeAdminRepository repository = _FakeAdminRepository();
+    final _TestAdminAuthService authService = _TestAdminAuthService(
+      initialSession: _buildSession(
+        id: 'admin_1',
+        email: 'admin@example.com',
+        displayName: 'Admin Operator',
+        username: 'adminoperator',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: AdminShell(
+          authService: authService,
+          adminService: AdminOperationsService(repository: repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapRailLabel(tester, 'Catalog');
+    await tester.scrollUntilVisible(
+      find.text('Search inventory'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('OOO-AG-0001'), findsOneWidget);
+    expect(find.text('OOO-READY-0003'), findsOneWidget);
+
+    await _enterField(tester, 'Search inventory', 'READY');
+    expect(find.text('OOO-READY-0003'), findsOneWidget);
+    expect(find.text('OOO-AG-0001'), findsNothing);
+    expect(find.text('OOO-PACKET-0004'), findsNothing);
+
+    await _selectDropdownValue(tester, 'State', 'in_inventory');
+    expect(find.text('OOO-READY-0003'), findsOneWidget);
+
+    await _enterField(tester, 'Search inventory', '');
+    expect(find.text('OOO-NEW-0002'), findsOneWidget);
+
+    await _selectDropdownValue(tester, 'State', 'All states');
+    await _selectDropdownValue(tester, 'Artist', 'Noor Kline');
+    expect(find.text('OOO-READY-0003'), findsNothing);
+    expect(find.text('OOO-PACKET-0004'), findsOneWidget);
+
+    await _selectDropdownValue(tester, 'Artist', 'All artists');
+    await _selectDropdownValue(tester, 'Sort', 'Oldest first');
+    expect(
+      tester.getTopLeft(find.text('OOO-PACKET-0004')).dy,
+      lessThan(tester.getTopLeft(find.text('OOO-AG-0001')).dy),
+    );
+  });
+
   testWidgets(
     'admin catalog shows existing photo state and restores upload after removal',
     (WidgetTester tester) async {
@@ -40,16 +103,19 @@ void main() {
       await tester.pumpAndSettle();
 
       await _tapRailLabel(tester, 'Catalog');
-      expect(find.text('Photo attached'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Remove photo'), findsOneWidget);
-      expect(
-        find.widgetWithText(FilledButton, 'Upload photo'),
-        findsNWidgets(3),
+      await tester.scrollUntilVisible(
+        find.text('Search inventory'),
+        200,
+        scrollable: find.byType(Scrollable).first,
       );
+      await tester.pumpAndSettle();
+      expect(find.text('Photo attached'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Remove'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Upload'), findsNWidgets(3));
 
       await _tapVisible(
         tester,
-        find.widgetWithText(FilledButton, 'Remove photo').first,
+        find.widgetWithText(FilledButton, 'Remove').first,
       );
       expect(find.text('Remove editorial photo?'), findsOneWidget);
       await tester.tap(find.widgetWithText(FilledButton, 'Remove photo').last);
@@ -60,10 +126,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Photo attached'), findsNothing);
-      expect(
-        find.widgetWithText(FilledButton, 'Upload photo'),
-        findsNWidgets(4),
-      );
+      expect(find.widgetWithText(FilledButton, 'Upload'), findsNWidgets(4));
     },
   );
 
@@ -613,6 +676,21 @@ Future<void> _enterField(
   await tester.pumpAndSettle();
 }
 
+Future<void> _selectDropdownValue(
+  WidgetTester tester,
+  String label,
+  String value,
+) async {
+  final Finder field = find.byWidgetPredicate((Widget widget) {
+    return widget is DropdownButtonFormField<String> &&
+        widget.decoration.labelText == label;
+  });
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(value).last);
+  await tester.pumpAndSettle();
+}
+
 Session _buildSession({
   required String id,
   required String email,
@@ -884,9 +962,10 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       ),
     ];
     _inventory = <AdminInventoryRecord>[
-      const AdminInventoryRecord(
+      AdminInventoryRecord(
         itemId: 'item_1',
         serialNumber: 'OOO-AG-0001',
+        createdAt: DateTime(2026, 3, 27, 11),
         artistName: 'Maya Vale',
         artworkTitle: 'Afterglow No. 01',
         garmentName: 'Collector Tee',
@@ -904,9 +983,10 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         claimCodeRevealState: 'unavailable',
         hasEditorialImage: true,
       ),
-      const AdminInventoryRecord(
+      AdminInventoryRecord(
         itemId: 'item_2',
         serialNumber: 'OOO-NEW-0002',
+        createdAt: DateTime(2026, 3, 28, 10),
         artistName: 'Maya Vale',
         artworkTitle: 'Afterglow No. 01',
         garmentName: 'Collector Tee',
@@ -924,9 +1004,10 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         claimCodeRevealState: 'awaiting_authenticity',
         hasEditorialImage: false,
       ),
-      const AdminInventoryRecord(
+      AdminInventoryRecord(
         itemId: 'item_3',
         serialNumber: 'OOO-READY-0003',
+        createdAt: DateTime(2026, 3, 28, 12),
         artistName: 'Maya Vale',
         artworkTitle: 'Afterglow No. 01',
         garmentName: 'Collector Tee',
@@ -944,11 +1025,12 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         claimCodeRevealState: 'ready',
         hasEditorialImage: false,
       ),
-      const AdminInventoryRecord(
+      AdminInventoryRecord(
         itemId: 'item_4',
         serialNumber: 'OOO-PACKET-0004',
-        artistName: 'Maya Vale',
-        artworkTitle: 'Afterglow No. 01',
+        createdAt: DateTime(2026, 3, 26, 9),
+        artistName: 'Noor Kline',
+        artworkTitle: 'Midnight Echo No. 02',
         garmentName: 'Collector Tee',
         itemState: 'sold_unclaimed',
         ownerDisplayLabel: 'Unassigned',
@@ -1274,6 +1356,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
+      createdAt: current.createdAt,
       artistName: current.artistName,
       artworkTitle: current.artworkTitle,
       garmentName: current.garmentName,
@@ -1327,6 +1410,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
+      createdAt: current.createdAt,
       artistName: current.artistName,
       artworkTitle: current.artworkTitle,
       garmentName: current.garmentName,
@@ -1420,6 +1504,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
+      createdAt: current.createdAt,
       artistName: current.artistName,
       artworkTitle: current.artworkTitle,
       garmentName: current.garmentName,
@@ -1478,6 +1563,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
+      createdAt: current.createdAt,
       artistName: current.artistName,
       artworkTitle: current.artworkTitle,
       garmentName: current.garmentName,
@@ -1541,6 +1627,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
       return AdminInventoryRecord(
         itemId: item.itemId,
         serialNumber: item.serialNumber,
+        createdAt: item.createdAt,
         artistName: item.artistName,
         artworkTitle: item.artworkTitle,
         garmentName: item.garmentName,
@@ -1757,6 +1844,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
+      createdAt: current.createdAt,
       artistName: current.artistName,
       artworkTitle: current.artworkTitle,
       garmentName: current.garmentName,
@@ -1825,6 +1913,7 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     _inventory[index] = AdminInventoryRecord(
       itemId: current.itemId,
       serialNumber: current.serialNumber,
+      createdAt: current.createdAt,
       artistName: current.artistName,
       artworkTitle: current.artworkTitle,
       garmentName: current.garmentName,

@@ -980,6 +980,7 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     return AdminInventoryRecord(
       itemId: row['item_id'].toString(),
       serialNumber: row['serial_number'].toString(),
+      createdAt: DateTime.parse(row['created_at'].toString()),
       artistName: row['artist_name'].toString(),
       artworkTitle: row['artwork_title'].toString(),
       garmentName: row['garment_name'].toString(),
