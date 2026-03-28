@@ -111,8 +111,7 @@ class _CustomerRootState extends State<CustomerRoot>
     checkoutConfig =
         widget.checkoutConfig ?? CheckoutPresentationConfig.fromEnvironment();
     authenticityLinkSource =
-        widget.authenticityLinkSource ??
-        AppAuthenticityLinkSource();
+        widget.authenticityLinkSource ?? AppAuthenticityLinkSource();
     workflowService =
         widget.workflowService ??
         MarketplaceWorkflowService(
@@ -125,7 +124,8 @@ class _CustomerRootState extends State<CustomerRoot>
       authService: authService,
       checkoutConfig: checkoutConfig,
       authenticityLinkSource: authenticityLinkSource,
-      paymentProofPicker: widget.paymentProofPicker ?? _defaultPaymentProofPicker,
+      paymentProofPicker:
+          widget.paymentProofPicker ?? _defaultPaymentProofPicker,
     );
     unawaited(controller.initialize());
   }
@@ -138,7 +138,9 @@ class _CustomerRootState extends State<CustomerRoot>
     if (configurationError == null) {
       return SupabaseMarketplaceRepository(client: Supabase.instance.client);
     }
-    return SupabaseMarketplaceRepository(configurationError: configurationError);
+    return SupabaseMarketplaceRepository(
+      configurationError: configurationError,
+    );
   }
 
   SupabaseAuthService _defaultAuthService() {
@@ -263,7 +265,7 @@ class _CustomerRootState extends State<CustomerRoot>
               IndexedStack(
                 index: controller.index,
                 children: <Widget>[
-                  HomeScreen(controller: controller),
+                  PremiumHomeScreen(controller: controller),
                   ExploreScreen(controller: controller),
                   ScanScreen(
                     controller: controller,
@@ -276,9 +278,7 @@ class _CustomerRootState extends State<CustomerRoot>
               if (controller.showInbox)
                 Align(
                   alignment: Alignment.topRight,
-                  child: _NotificationCenterPanel(
-                    controller: controller,
-                  ),
+                  child: _NotificationCenterPanel(controller: controller),
                 ),
               if (controller.isBusy)
                 Positioned.fill(
@@ -330,11 +330,11 @@ class CustomerController extends ChangeNotifier {
     required AuthenticityLinkSource authenticityLinkSource,
     required PaymentProofPicker paymentProofPicker,
   }) : _repository = repository,
-        _workflowService = workflowService,
-        _authService = authService,
-        _checkoutConfig = checkoutConfig,
-        _authenticityLinkSource = authenticityLinkSource,
-        _paymentProofPicker = paymentProofPicker;
+       _workflowService = workflowService,
+       _authService = authService,
+       _checkoutConfig = checkoutConfig,
+       _authenticityLinkSource = authenticityLinkSource,
+       _paymentProofPicker = paymentProofPicker;
 
   final MarketplaceRepository _repository;
   final MarketplaceWorkflowService _workflowService;
@@ -361,7 +361,8 @@ class CustomerController extends ChangeNotifier {
   String? lastCheckoutUrl;
   PublicAuthenticityRecord? scannedAuthenticity;
   PublicAuthenticityRecord? publicAuthenticityRoute;
-  List<CollectorNotification> notificationFeed = const <CollectorNotification>[];
+  List<CollectorNotification> notificationFeed =
+      const <CollectorNotification>[];
   Set<String> savedItemIds = <String>{};
   String? _lastResolvedAuthenticityToken;
   bool _isLiveRefreshInFlight = false;
@@ -380,10 +381,10 @@ class CustomerController extends ChangeNotifier {
   List<UniqueItem> get vaultItems => items
       .where((UniqueItem item) => item.currentOwnerUserId == currentUserId)
       .toList();
-  List<UniqueItem> get savedItems => items
-      .where((UniqueItem item) => savedItemIds.contains(item.id))
-      .toList();
-  List<ItemComment> commentsFor(String itemId) => _repository.commentsForItem(itemId);
+  List<UniqueItem> get savedItems =>
+      items.where((UniqueItem item) => savedItemIds.contains(item.id)).toList();
+  List<ItemComment> commentsFor(String itemId) =>
+      _repository.commentsForItem(itemId);
   ManualPaymentOrder? manualPaymentFor(String itemId) =>
       _repository.manualPaymentForItem(itemId);
   List<_ActivityEntry> get activityLog => _buildActivityLog();
@@ -876,7 +877,8 @@ class CustomerController extends ChangeNotifier {
     return result;
   }
 
-  Future<MarketplaceActionResult<SelectedPaymentProof>> pickPaymentProof() async {
+  Future<MarketplaceActionResult<SelectedPaymentProof>>
+  pickPaymentProof() async {
     try {
       final SelectedPaymentProof? proof = await _paymentProofPicker();
       if (proof == null) {
@@ -1186,15 +1188,16 @@ class CustomerController extends ChangeNotifier {
       final Set<String> serverIds = notifications.data!
           .map((CollectorNotification item) => item.id)
           .toSet();
-      notificationFeed = <CollectorNotification>[
-        ...localOnly.where(
-          (CollectorNotification item) => !serverIds.contains(item.id),
-        ),
-        ...notifications.data!,
-      ]..sort(
-          (CollectorNotification a, CollectorNotification b) =>
-              b.createdAt.compareTo(a.createdAt),
-        );
+      notificationFeed =
+          <CollectorNotification>[
+            ...localOnly.where(
+              (CollectorNotification item) => !serverIds.contains(item.id),
+            ),
+            ...notifications.data!,
+          ]..sort(
+            (CollectorNotification a, CollectorNotification b) =>
+                b.createdAt.compareTo(a.createdAt),
+          );
     }
 
     final MarketplaceActionResult<List<SavedCollectible>> saved =
@@ -1378,7 +1381,9 @@ class CheckoutPresentationConfig {
     const String configuredSuccess = String.fromEnvironment(
       'CHECKOUT_SUCCESS_URL',
     );
-    const String configuredCancel = String.fromEnvironment('CHECKOUT_CANCEL_URL');
+    const String configuredCancel = String.fromEnvironment(
+      'CHECKOUT_CANCEL_URL',
+    );
 
     return CheckoutPresentationConfig(
       successUrl: _resolveReturnUrl(
@@ -1398,21 +1403,25 @@ class CheckoutPresentationConfig {
   }) {
     if (configured.trim().isNotEmpty) {
       final Uri configuredUri = Uri.parse(configured.trim());
-      return configuredUri.replace(
-        queryParameters: <String, String>{
-          ...configuredUri.queryParameters,
-          'checkout_status': status,
-        },
-      ).toString();
+      return configuredUri
+          .replace(
+            queryParameters: <String, String>{
+              ...configuredUri.queryParameters,
+              'checkout_status': status,
+            },
+          )
+          .toString();
     }
 
     if (Uri.base.scheme == 'http' || Uri.base.scheme == 'https') {
-      return Uri.base.replace(
-        queryParameters: <String, String>{
-          ...Uri.base.queryParameters,
-          'checkout_status': status,
-        },
-      ).toString();
+      return Uri.base
+          .replace(
+            queryParameters: <String, String>{
+              ...Uri.base.queryParameters,
+              'checkout_status': status,
+            },
+          )
+          .toString();
     }
 
     return null;
@@ -1737,6 +1746,772 @@ class _MessageCard extends StatelessWidget {
   }
 }
 
+class PremiumHomeScreen extends StatelessWidget {
+  const PremiumHomeScreen({required this.controller, super.key});
+
+  final CustomerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Artist> featuredArtists = controller.artists.take(6).toList();
+    final List<Listing> marketListings = controller.listings.take(4).toList();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+      children: <Widget>[
+        _PremiumHeroPanel(controller: controller),
+        const SizedBox(height: 24),
+        _CollectorUpdatePanel(controller: controller),
+        const SizedBox(height: 32),
+        const _SectionHeader(
+          eyebrow: 'Curated voices',
+          title: 'Featured artists',
+          caption: 'Discover the makers shaping the latest collectible drop.',
+        ),
+        const SizedBox(height: 16),
+        if (featuredArtists.isEmpty)
+          const _EmptyLuxuryCard(
+            title: 'Featured artists arriving soon',
+            body:
+                'Artist profiles will appear here as the next release is prepared.',
+          ),
+        if (featuredArtists.isNotEmpty)
+          SizedBox(
+            height: 248,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: featuredArtists.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 16),
+              itemBuilder: (BuildContext context, int index) {
+                final Artist artist = featuredArtists[index];
+                return SizedBox(
+                  width: 276,
+                  child: _FeaturedArtistCard(
+                    artist: artist,
+                    onTap: () =>
+                        _openArtistProfile(context, controller, artist),
+                  ),
+                );
+              },
+            ),
+          ),
+        const SizedBox(height: 32),
+        const _SectionHeader(
+          eyebrow: 'Market movement',
+          title: 'Recent resale activity',
+          caption: 'A quieter view of verified movement across the market.',
+        ),
+        const SizedBox(height: 16),
+        if (marketListings.isEmpty)
+          const _EmptyLuxuryCard(
+            title: 'No live resale movement',
+            body:
+                'Verified market activity will appear once collectors list pieces for transfer.',
+          ),
+        ...marketListings.map((Listing listing) {
+          final UniqueItem? item = controller.itemById(listing.itemId);
+          final Artist? artist = item == null
+              ? null
+              : controller.artistFor(item);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _MarketMovementCard(
+              listing: listing,
+              item: item,
+              artist: artist,
+              onTap: item == null
+                  ? null
+                  : () => _openItemDetail(context, controller, item.id),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _PremiumHeroPanel extends StatelessWidget {
+  const _PremiumHeroPanel({required this.controller});
+
+  final CustomerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller.items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF121212),
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.12)),
+        ),
+        child: const Text('No collectible catalog is available yet.'),
+      );
+    }
+
+    final UniqueItem item = controller.items.first;
+    final Artist? artist = controller.artistFor(item);
+    final Artwork? artwork = controller.artworkFor(item);
+    final List<String> descriptors = <String>[
+      if (item.askingPrice != null) 'Limited',
+      if (item.claimCodeConsumed || item.currentOwnerUserId != null) 'Verified',
+      if (artist != null) 'Hand-finished',
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E0E0E),
+        borderRadius: BorderRadius.circular(34),
+        border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.14)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(34),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            AspectRatio(
+              aspectRatio: 0.92,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  _EditorialImage(
+                    imageUrl: item.imageUrls.isEmpty
+                        ? null
+                        : item.imageUrls.first,
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.06),
+                          Colors.black.withValues(alpha: 0.18),
+                          const Color(0xFF090909).withValues(alpha: 0.96),
+                        ],
+                        stops: const <double>[0.0, 0.42, 1.0],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 18,
+                    left: 18,
+                    right: 18,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        const _HeroMetaChip(label: 'Latest drop'),
+                        ...descriptors.map(
+                          (String descriptor) =>
+                              _HeroMetaChip(label: descriptor),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    left: 22,
+                    right: 22,
+                    bottom: 24,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        if (artist != null)
+                          Text(
+                            artist.displayName.toUpperCase(),
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  letterSpacing: 1.6,
+                                  color: const Color(0xFFE5D3A3),
+                                ),
+                          ),
+                        const SizedBox(height: 10),
+                        Text(
+                          artwork?.title ?? item.productName,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(
+                                fontSize: 34,
+                                height: 1.04,
+                                color: const Color(0xFFF5F1E8),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          item.productName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                color: const Color(0xFFD4CCC0),
+                                height: 1.45,
+                              ),
+                        ),
+                        const SizedBox(height: 16),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            _LuxuryInfoChip(label: item.serialNumber),
+                            _LuxuryInfoChip(
+                              label: item.state.key.replaceAll('_', ' '),
+                            ),
+                            if (item.askingPrice != null)
+                              _LuxuryInfoChip(
+                                label: formatCurrency(item.askingPrice!),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      artist?.authenticityStatement ??
+                          'Verified ownership, provenance, and collector-first transfer integrity.',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFFC9C1B6),
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  FilledButton(
+                    onPressed: () {
+                      _openItemDetail(context, controller, item.id);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE0C88A),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text('Explore piece'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CollectorUpdatePanel extends StatelessWidget {
+  const _CollectorUpdatePanel({required this.controller});
+
+  final CustomerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final _ActivityEntry? latestActivity = controller.activityLog.isEmpty
+        ? null
+        : controller.activityLog.first;
+    final List<_UpdateTileData> updates = <_UpdateTileData>[
+      if (controller.unreadNotificationCount > 0)
+        _UpdateTileData(
+          icon: Icons.notifications_active_outlined,
+          label: 'Unread updates',
+          value: '${controller.unreadNotificationCount}',
+          detail: controller.unreadNotificationCount == 1
+              ? 'One private notification is waiting.'
+              : '${controller.unreadNotificationCount} private notifications are waiting.',
+          accent: const Color(0xFFC25656),
+        ),
+      if (controller.statusMessage != null)
+        _UpdateTileData(
+          icon: Icons.verified_outlined,
+          label: 'Latest status',
+          value: 'Updated',
+          detail: controller.statusMessage!,
+          accent: OneOfOneTheme.gold,
+        ),
+      if (controller.errorMessage != null)
+        _UpdateTileData(
+          icon: Icons.priority_high_outlined,
+          label: 'Needs attention',
+          value: 'Review',
+          detail: controller.errorMessage!,
+          accent: const Color(0xFFB36A58),
+        ),
+      if (latestActivity != null)
+        _UpdateTileData(
+          icon: Icons.history_toggle_off,
+          label: 'Activity',
+          value: latestActivity.status,
+          detail: latestActivity.title,
+          accent: const Color(0xFF8E7F5C),
+        ),
+    ];
+
+    if (updates.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: OneOfOneTheme.gold.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.auto_awesome_outlined,
+                color: OneOfOneTheme.gold,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Your collector profile is quiet for now. New movement will surface here in a calmer, editorial way.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFFD0C8BC),
+                  height: 1.45,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: updates
+          .take(3)
+          .map(
+            (_UpdateTileData update) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _CollectorUpdateTile(update: update),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _CollectorUpdateTile extends StatelessWidget {
+  const _CollectorUpdateTile({required this.update});
+
+  final _UpdateTileData update;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: update.accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(update.icon, color: update.accent),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        update.label,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFFE9E1D2),
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      update.value,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: update.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  update.detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFFBEB6AB),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.eyebrow,
+    required this.title,
+    required this.caption,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          eyebrow.toUpperCase(),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: OneOfOneTheme.gold,
+            letterSpacing: 1.8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            color: const Color(0xFFF5F0E6),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          caption,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: const Color(0xFFAEA79B),
+            height: 1.45,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeaturedArtistCard extends StatelessWidget {
+  const _FeaturedArtistCard({required this.artist, required this.onTap});
+
+  final Artist artist;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: onTap,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: const Color(0xFF151515),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[Color(0xFF1A1814), Color(0xFF121212)],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: OneOfOneTheme.gold.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.auto_awesome, color: OneOfOneTheme.gold),
+              ),
+              const Spacer(),
+              Text(
+                artist.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: const Color(0xFFF4EEDF),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                artist.authenticityStatement,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFFC6BEB1),
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  _LuxuryInfoChip(label: '${artist.royaltyBps / 100}% royalty'),
+                  Text(
+                    'Discover artist',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelLarge?.copyWith(color: OneOfOneTheme.gold),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MarketMovementCard extends StatelessWidget {
+  const _MarketMovementCard({
+    required this.listing,
+    required this.item,
+    required this.artist,
+    required this.onTap,
+  });
+
+  final Listing listing;
+  final UniqueItem? item;
+  final Artist? artist;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final String title = item?.productName ?? 'Verified collectible';
+    final String subtitle = item == null
+        ? 'Available now for verified on-platform resale.'
+        : '${artist?.displayName ?? 'Private seller'} · ${item!.serialNumber}';
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: OneOfOneTheme.gold.withValues(alpha: 0.1),
+                ),
+                child: Icon(
+                  Icons.north_east,
+                  color: OneOfOneTheme.gold.withValues(alpha: 0.92),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFFF2EBDC),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFFB7AF9F),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text(
+                    formatCurrency(listing.askingPrice),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: OneOfOneTheme.gold,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'View collection',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: const Color(0xFFD7CDBA),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LuxuryInfoChip extends StatelessWidget {
+  const _LuxuryInfoChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(color: const Color(0xFFE8E0D0)),
+      ),
+    );
+  }
+}
+
+class _HeroMetaChip extends StatelessWidget {
+  const _HeroMetaChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.32),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: const Color(0xFFF2E7C9),
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyLuxuryCard extends StatelessWidget {
+  const _EmptyLuxuryCard({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: const Color(0xFFF2EBDC),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFFBFB7AA),
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UpdateTileData {
+  const _UpdateTileData({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.detail,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final String detail;
+  final Color accent;
+}
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({required this.controller, super.key});
 
@@ -1786,10 +2561,7 @@ class HomeScreen extends StatelessWidget {
                 children: <Widget>[
                   Text('${artist.royaltyBps / 100}% royalty'),
                   const SizedBox(height: 4),
-                  Text(
-                    'View',
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
+                  Text('View', style: Theme.of(context).textTheme.labelMedium),
                 ],
               ),
             ),
@@ -1804,30 +2576,28 @@ class HomeScreen extends StatelessWidget {
           const Card(
             child: ListTile(title: Text('No live resale listings right now.')),
           ),
-        ...controller.listings.map(
-          (Listing listing) {
-            final UniqueItem? item = controller.itemById(listing.itemId);
-            final Artist? artist = item == null
-                ? null
-                : controller.artistFor(item);
-            final String title = item == null
-                ? 'Verified resale ${formatCurrency(listing.askingPrice)}'
-                : '${item.productName} ${formatCurrency(listing.askingPrice)}';
-            final String subtitle = item == null
-                ? 'Available now for verified on-platform resale.'
-                : '${artist?.displayName ?? 'Private seller'} • ${item.serialNumber}';
-            return Card(
-              child: ListTile(
-                onTap: item == null
-                    ? null
-                    : () => _openItemDetail(context, controller, item.id),
-                title: Text(title),
-                subtitle: Text(subtitle),
-                trailing: const Text('View'),
-              ),
-            );
-          },
-        ),
+        ...controller.listings.map((Listing listing) {
+          final UniqueItem? item = controller.itemById(listing.itemId);
+          final Artist? artist = item == null
+              ? null
+              : controller.artistFor(item);
+          final String title = item == null
+              ? 'Verified resale ${formatCurrency(listing.askingPrice)}'
+              : '${item.productName} ${formatCurrency(listing.askingPrice)}';
+          final String subtitle = item == null
+              ? 'Available now for verified on-platform resale.'
+              : '${artist?.displayName ?? 'Private seller'} • ${item.serialNumber}';
+          return Card(
+            child: ListTile(
+              onTap: item == null
+                  ? null
+                  : () => _openItemDetail(context, controller, item.id),
+              title: Text(title),
+              subtitle: Text(subtitle),
+              trailing: const Text('View'),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -1852,7 +2622,8 @@ void _openArtistProfile(
 ) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => ArtistProfileScreen(controller: controller, artist: artist),
+      builder: (_) =>
+          ArtistProfileScreen(controller: controller, artist: artist),
     ),
   );
 }
@@ -1954,10 +2725,7 @@ class ExploreScreen extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: controller.items.map((UniqueItem item) {
-              return _ShopItemCard(
-                controller: controller,
-                item: item,
-              );
+              return _ShopItemCard(controller: controller, item: item);
             }).toList(),
           ),
       ],
@@ -1966,10 +2734,7 @@ class ExploreScreen extends StatelessWidget {
 }
 
 class _ShopItemCard extends StatelessWidget {
-  const _ShopItemCard({
-    required this.controller,
-    required this.item,
-  });
+  const _ShopItemCard({required this.controller, required this.item});
 
   final CustomerController controller;
   final UniqueItem item;
@@ -1983,9 +2748,7 @@ class _ShopItemCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF171717),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: OneOfOneTheme.gold.withValues(alpha: 0.18),
-          ),
+          border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.18)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1996,7 +2759,9 @@ class _ShopItemCard extends StatelessWidget {
                   top: Radius.circular(28),
                 ),
                 child: _EditorialImage(
-                  imageUrl: item.imageUrls.isEmpty ? null : item.imageUrls.first,
+                  imageUrl: item.imageUrls.isEmpty
+                      ? null
+                      : item.imageUrls.first,
                 ),
               ),
             ),
@@ -2016,9 +2781,9 @@ class _ShopItemCard extends StatelessWidget {
                     item.askingPrice == null
                         ? 'Held'
                         : formatCurrency(item.askingPrice!),
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: OneOfOneTheme.gold,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyLarge?.copyWith(color: OneOfOneTheme.gold),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -2067,7 +2832,9 @@ class ItemDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(controller.itemById(itemId)?.productName ?? 'Collectible')),
+      appBar: AppBar(
+        title: Text(controller.itemById(itemId)?.productName ?? 'Collectible'),
+      ),
       body: AnimatedBuilder(
         animation: controller,
         builder: (BuildContext context, _) {
@@ -2087,188 +2854,199 @@ class ItemDetailScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: <Widget>[
-          SizedBox(
-            height: 320,
-            child: _InteractiveCollectiblePreview(item: item),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            artwork?.title ?? item.productName,
-            style: Theme.of(context).textTheme.displaySmall,
-          ),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: artist == null
-                ? null
-                : () => _openArtistProfile(context, controller, artist),
-            child: Text(
-              'Artist: ${artist?.displayName ?? 'Unknown artist'}',
-              style: TextStyle(
-                color: artist == null ? null : OneOfOneTheme.gold,
-                decoration: artist == null
-                    ? TextDecoration.none
-                    : TextDecoration.underline,
-                decorationColor: OneOfOneTheme.gold,
+              SizedBox(
+                height: 320,
+                child: _InteractiveCollectiblePreview(item: item),
               ),
-            ),
-          ),
-          Text('Serial: ${item.serialNumber}'),
-          const Text('Authenticity: verified human-made artwork'),
-          const SizedBox(height: 12),
-          Text(
-            artwork?.story ??
-                'Story and concept note will appear here once published.',
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Provenance proof',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          if (artwork == null || artwork.humanMadeProof.isEmpty)
-            const ListTile(title: Text('No proof assets published yet.')),
-          if (artwork != null)
-            ...artwork.humanMadeProof.map(
-              (String proof) => ListTile(title: Text(proof)),
-            ),
-          const SizedBox(height: 12),
-          Text(
-            'Ownership history summary',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          if (history.isEmpty)
-            const ListTile(title: Text('No verified ownership records yet.')),
-          ...history.map(
-            (OwnershipRecord record) => ListTile(
-              title: Text(record.ownerUserId),
-              subtitle: Text(
-                'Acquired ${record.acquiredAt.toIso8601String().split('T').first}',
+              const SizedBox(height: 16),
+              Text(
+                artwork?.title ?? item.productName,
+                style: Theme.of(context).textTheme.displaySmall,
               ),
-            ),
-          ),
-          if (artist != null) ...<Widget>[
-            const SizedBox(height: 12),
-            Card(
-              child: ListTile(
-                onTap: () => _openArtistProfile(context, controller, artist),
-                title: Text(artist.displayName),
-                subtitle: Text(
-                  artist.authenticityStatement,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-              ),
-            ),
-          ],
-          if (item.askingPrice != null) ...<Widget>[
-            const SizedBox(height: 12),
-            Text(
-              'Resale financials',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            ListTile(
-              title: const Text('Asking price'),
-              trailing: Text(formatCurrency(breakdown.grossAmount)),
-            ),
-            ListTile(
-              title: const Text('Platform fee'),
-              trailing: Text(formatCurrency(breakdown.platformFee)),
-            ),
-            ListTile(
-              title: const Text('Artist royalty'),
-              trailing: Text(formatCurrency(breakdown.artistRoyalty)),
-            ),
-            ListTile(
-              title: const Text('Seller payout'),
-              trailing: Text(formatCurrency(breakdown.sellerPayout)),
-            ),
-          ],
-          if (paymentOrder != null) ...<Widget>[
-            const SizedBox(height: 12),
-            _ManualPaymentStatusCard(
-              controller: controller,
-              item: item,
-              paymentOrder: paymentOrder,
-            ),
-          ],
-          const SizedBox(height: 16),
-          _CommentsSection(
-            controller: controller,
-            item: item,
-            comments: comments,
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: <Widget>[
-              if (_manualPaymentActionLabel(
-                    item: item,
-                    controller: controller,
-                    paymentOrder: paymentOrder,
-                  ) case final String paymentActionLabel)
-                ElevatedButton(
-                  onPressed: () async {
-                    await _openManualPaymentSheet(context, controller, item);
-                  },
-                  child: Text(paymentActionLabel),
-                ),
-              if (item.currentOwnerUserId == controller.currentUserId &&
-                  (item.state == ItemState.claimed ||
-                      item.state == ItemState.transferred) &&
-                  !item.state.isRestricted)
-                OutlinedButton(
-                  onPressed: () async {
-                    final String message = await controller.createResale(
-                      itemId: item.id,
-                      priceCents: 225000,
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(message)));
-                    }
-                  },
-                  child: const Text('Resell item'),
-                ),
-              OutlinedButton(
-                onPressed: () async {
-                  final String message = await controller.toggleSavedItem(
-                    item.id,
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text(message)));
-                  }
-                },
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: artist == null
+                    ? null
+                    : () => _openArtistProfile(context, controller, artist),
                 child: Text(
-                  controller.savedItemIds.contains(item.id)
-                      ? 'Unsave'
-                      : 'Save item',
+                  'Artist: ${artist?.displayName ?? 'Unknown artist'}',
+                  style: TextStyle(
+                    color: artist == null ? null : OneOfOneTheme.gold,
+                    decoration: artist == null
+                        ? TextDecoration.none
+                        : TextDecoration.underline,
+                    decorationColor: OneOfOneTheme.gold,
+                  ),
                 ),
               ),
-              OutlinedButton(
-                onPressed: () async {
-                  final String message = await controller.openDispute(
-                    itemId: item.id,
-                    reason:
-                        'Collector requested review of ownership condition.',
-                    freeze:
-                        item.state == ItemState.stolenFlagged ||
-                        item.state == ItemState.frozen,
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text(message)));
-                  }
-                },
-                child: const Text('Report dispute'),
+              Text('Serial: ${item.serialNumber}'),
+              const Text('Authenticity: verified human-made artwork'),
+              const SizedBox(height: 12),
+              Text(
+                artwork?.story ??
+                    'Story and concept note will appear here once published.',
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Provenance proof',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              if (artwork == null || artwork.humanMadeProof.isEmpty)
+                const ListTile(title: Text('No proof assets published yet.')),
+              if (artwork != null)
+                ...artwork.humanMadeProof.map(
+                  (String proof) => ListTile(title: Text(proof)),
+                ),
+              const SizedBox(height: 12),
+              Text(
+                'Ownership history summary',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              if (history.isEmpty)
+                const ListTile(
+                  title: Text('No verified ownership records yet.'),
+                ),
+              ...history.map(
+                (OwnershipRecord record) => ListTile(
+                  title: Text(record.ownerUserId),
+                  subtitle: Text(
+                    'Acquired ${record.acquiredAt.toIso8601String().split('T').first}',
+                  ),
+                ),
+              ),
+              if (artist != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    onTap: () =>
+                        _openArtistProfile(context, controller, artist),
+                    title: Text(artist.displayName),
+                    subtitle: Text(
+                      artist.authenticityStatement,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
+              if (item.askingPrice != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  'Resale financials',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                ListTile(
+                  title: const Text('Asking price'),
+                  trailing: Text(formatCurrency(breakdown.grossAmount)),
+                ),
+                ListTile(
+                  title: const Text('Platform fee'),
+                  trailing: Text(formatCurrency(breakdown.platformFee)),
+                ),
+                ListTile(
+                  title: const Text('Artist royalty'),
+                  trailing: Text(formatCurrency(breakdown.artistRoyalty)),
+                ),
+                ListTile(
+                  title: const Text('Seller payout'),
+                  trailing: Text(formatCurrency(breakdown.sellerPayout)),
+                ),
+              ],
+              if (paymentOrder != null) ...<Widget>[
+                const SizedBox(height: 12),
+                _ManualPaymentStatusCard(
+                  controller: controller,
+                  item: item,
+                  paymentOrder: paymentOrder,
+                ),
+              ],
+              const SizedBox(height: 16),
+              _CommentsSection(
+                controller: controller,
+                item: item,
+                comments: comments,
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: <Widget>[
+                  if (_manualPaymentActionLabel(
+                        item: item,
+                        controller: controller,
+                        paymentOrder: paymentOrder,
+                      )
+                      case final String paymentActionLabel)
+                    ElevatedButton(
+                      onPressed: () async {
+                        await _openManualPaymentSheet(
+                          context,
+                          controller,
+                          item,
+                        );
+                      },
+                      child: Text(paymentActionLabel),
+                    ),
+                  if (item.currentOwnerUserId == controller.currentUserId &&
+                      (item.state == ItemState.claimed ||
+                          item.state == ItemState.transferred) &&
+                      !item.state.isRestricted)
+                    OutlinedButton(
+                      onPressed: () async {
+                        final String message = await controller.createResale(
+                          itemId: item.id,
+                          priceCents: 225000,
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(message)));
+                        }
+                      },
+                      child: const Text('Resell item'),
+                    ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final String message = await controller.toggleSavedItem(
+                        item.id,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(message)));
+                      }
+                    },
+                    child: Text(
+                      controller.savedItemIds.contains(item.id)
+                          ? 'Unsave'
+                          : 'Save item',
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final String message = await controller.openDispute(
+                        itemId: item.id,
+                        reason:
+                            'Collector requested review of ownership condition.',
+                        freeze:
+                            item.state == ItemState.stolenFlagged ||
+                            item.state == ItemState.frozen,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(message)));
+                      }
+                    },
+                    child: const Text('Report dispute'),
+                  ),
+                ],
               ),
             ],
-            ),
-          ],
           );
         },
       ),
@@ -2400,11 +3178,8 @@ class _ManualPaymentStatusCard extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton(
-                  onPressed: () => _openManualPaymentSheet(
-                    context,
-                    controller,
-                    item,
-                  ),
+                  onPressed: () =>
+                      _openManualPaymentSheet(context, controller, item),
                   child: Text(
                     paymentOrder.reviewStatus == 'resubmission_requested'
                         ? 'Resubmit proof'
@@ -2512,8 +3287,9 @@ class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
   }
 
   Future<void> _pickProof() async {
-    final MarketplaceActionResult<SelectedPaymentProof> result =
-        await widget.controller.pickPaymentProof();
+    final MarketplaceActionResult<SelectedPaymentProof> result = await widget
+        .controller
+        .pickPaymentProof();
     if (!mounted) {
       return;
     }
@@ -2558,8 +3334,9 @@ class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
       _messageIsError = false;
     });
 
-    final MarketplaceActionResult<ManualPaymentOrder> result =
-        await widget.controller.submitManualPaymentProof(
+    final MarketplaceActionResult<ManualPaymentOrder> result = await widget
+        .controller
+        .submitManualPaymentProof(
           orderId: widget.paymentOrder.orderId,
           paymentMethod: _paymentMethod,
           payerName: _payerNameController.text.trim(),
@@ -2635,8 +3412,12 @@ class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
                       const SizedBox(height: 8),
                       Text(_methods.join(' | ')),
                       const SizedBox(height: 8),
-                      Text('Payment reference: ${widget.paymentOrder.paymentReference}'),
-                      Text('Amount due: ${formatCurrency(widget.paymentOrder.amountCents)}'),
+                      Text(
+                        'Payment reference: ${widget.paymentOrder.paymentReference}',
+                      ),
+                      Text(
+                        'Amount due: ${formatCurrency(widget.paymentOrder.amountCents)}',
+                      ),
                     ],
                   ),
                 ),
@@ -2685,7 +3466,9 @@ class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
                 enabled: !_submitting,
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(labelText: 'Paid amount (MMK)'),
+                decoration: const InputDecoration(
+                  labelText: 'Paid amount (MMK)',
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -2711,7 +3494,9 @@ class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
                 onPressed: _submitting ? null : _pickProof,
                 icon: const Icon(Icons.upload_file_outlined),
                 label: Text(
-                  _proof == null ? 'Upload payment screenshot' : _proof!.fileName,
+                  _proof == null
+                      ? 'Upload payment screenshot'
+                      : _proof!.fileName,
                 ),
               ),
               if (_message != null) ...<Widget>[
@@ -2745,7 +3530,9 @@ class _ManualPaymentSheetState extends State<_ManualPaymentSheet> {
                               SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                               SizedBox(width: 10),
                               Text('Submitting...'),
@@ -2889,7 +3676,9 @@ class ArtistProfileScreen extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: _EditorialImage(
-                      imageUrl: item.imageUrls.isEmpty ? null : item.imageUrls.first,
+                      imageUrl: item.imageUrls.isEmpty
+                          ? null
+                          : item.imageUrls.first,
                     ),
                   ),
                 ),
@@ -2926,18 +3715,17 @@ class _EditorialImage extends StatelessWidget {
             end: Alignment.bottomRight,
           ),
         ),
-        child: const Center(
-          child: Text('Editorial image coming soon'),
-        ),
+        child: const Center(child: Text('Editorial image coming soon')),
       );
     }
 
     return Image.network(
       imageUrl!,
       fit: BoxFit.cover,
-      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-        return const Center(child: Text('Image unavailable'));
-      },
+      errorBuilder:
+          (BuildContext context, Object error, StackTrace? stackTrace) {
+            return const Center(child: Text('Image unavailable'));
+          },
     );
   }
 }
@@ -2976,9 +3764,7 @@ class _InteractiveCollectiblePreviewState
         decoration: BoxDecoration(
           color: const Color(0xFF191919),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: OneOfOneTheme.gold.withValues(alpha: 0.3),
-          ),
+          border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.3)),
         ),
         child: Stack(
           children: <Widget>[
@@ -3111,8 +3897,8 @@ String _contentTypeForProofFileName(String fileName) {
 }
 
 String _notificationCategory(CollectorNotification notification) {
-  final String haystack =
-      '${notification.title} ${notification.body}'.toLowerCase();
+  final String haystack = '${notification.title} ${notification.body}'
+      .toLowerCase();
   if (haystack.contains('payment') ||
       haystack.contains('proof') ||
       haystack.contains('review')) {
@@ -3176,9 +3962,7 @@ class _NotificationCenterPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF151515),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: OneOfOneTheme.gold.withValues(alpha: 0.25),
-        ),
+        border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.25)),
       ),
       child: DefaultTabController(
         length: 2,
@@ -3250,9 +4034,10 @@ class _NotificationCenterPanel extends StatelessWidget {
                                           : controller.items
                                                 .map(
                                                   (UniqueItem item) =>
-                                                      controller.manualPaymentFor(
-                                                        item.id,
-                                                      ),
+                                                      controller
+                                                          .manualPaymentFor(
+                                                            item.id,
+                                                          ),
                                                 )
                                                 .whereType<ManualPaymentOrder>()
                                                 .fold<ManualPaymentOrder?>(
@@ -3306,7 +4091,9 @@ class _NotificationCenterPanel extends StatelessWidget {
                                     _formatCustomerTimestamp(
                                       notification.createdAt,
                                     ),
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ],
                               ),
@@ -3330,11 +4117,17 @@ class _NotificationCenterPanel extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
                                   const SizedBox(height: 4),
-                                  Text(entry.detail, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  Text(
+                                    entry.detail,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                   const SizedBox(height: 6),
                                   Text(
                                     '${entry.category} • ${_formatCustomerTimestamp(entry.occurredAt)}',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ],
                               ),
@@ -3427,11 +4220,19 @@ class _NotificationDetailSheet extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        Text('Order ref ${latestPaymentOrder!.paymentReference}'),
-                        Text('Order status: ${latestPaymentOrder!.orderStatus}'),
-                        Text('Payment status: ${latestPaymentOrder!.paymentStatus}'),
+                        Text(
+                          'Order ref ${latestPaymentOrder!.paymentReference}',
+                        ),
+                        Text(
+                          'Order status: ${latestPaymentOrder!.orderStatus}',
+                        ),
+                        Text(
+                          'Payment status: ${latestPaymentOrder!.paymentStatus}',
+                        ),
                         if (latestPaymentOrder!.reviewStatus != null)
-                          Text('Review status: ${latestPaymentOrder!.reviewStatus}'),
+                          Text(
+                            'Review status: ${latestPaymentOrder!.reviewStatus}',
+                          ),
                       ],
                     ),
                   ),
@@ -3524,10 +4325,7 @@ class _CommentsSectionState extends State<_CommentsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          'Collector conversation',
-          style: theme.textTheme.headlineSmall,
-        ),
+        Text('Collector conversation', style: theme.textTheme.headlineSmall),
         const SizedBox(height: 12),
         TextField(
           controller: _commentController,
@@ -3604,10 +4402,7 @@ class _CommentsSectionState extends State<_CommentsSection> {
                         Text('Posting...'),
                       ],
                     )
-                  : const Text(
-                      'Post comment',
-                      key: ValueKey<String>('idle'),
-                    ),
+                  : const Text('Post comment', key: ValueKey<String>('idle')),
             ),
           ),
         ),
@@ -3741,7 +4536,9 @@ class _ScanScreenState extends State<ScanScreen> {
                           DecoratedBox(
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: OneOfOneTheme.gold.withValues(alpha: 0.65),
+                                color: OneOfOneTheme.gold.withValues(
+                                  alpha: 0.65,
+                                ),
                                 width: 2,
                               ),
                               borderRadius: BorderRadius.circular(20),
@@ -3971,13 +4768,13 @@ class VaultScreen extends StatelessWidget {
               ),
             ),
           ),
-        ...controller.savedItems.map(
-          (UniqueItem item) => Card(
-            child: ListTile(
-              onTap: () => _openItemDetail(context, controller, item.id),
-              title: Text(item.productName),
-              subtitle: Text(item.serialNumber),
-              trailing: const Icon(Icons.bookmark),
+          ...controller.savedItems.map(
+            (UniqueItem item) => Card(
+              child: ListTile(
+                onTap: () => _openItemDetail(context, controller, item.id),
+                title: Text(item.productName),
+                subtitle: Text(item.serialNumber),
+                trailing: const Icon(Icons.bookmark),
               ),
             ),
           ),
@@ -4002,7 +4799,10 @@ class VaultScreen extends StatelessWidget {
                   subtitle: Text(
                     'Certificate active - ${item.state.key.replaceAll('_', ' ')}',
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -4017,11 +4817,8 @@ class VaultScreen extends StatelessWidget {
                       if (item.currentOwnerUserId == controller.currentUserId &&
                           !item.state.isRestricted)
                         FilledButton.tonal(
-                          onPressed: () => _openItemDetail(
-                            context,
-                            controller,
-                            item.id,
-                          ),
+                          onPressed: () =>
+                              _openItemDetail(context, controller, item.id),
                           child: const Text('Open & resell'),
                         ),
                     ],
@@ -4076,13 +4873,17 @@ class ProfileScreen extends StatelessWidget {
         Card(
           child: ListTile(
             title: const Text('Saved items'),
-            subtitle: Text('${controller.savedItemIds.length} collectible(s) tracked'),
+            subtitle: Text(
+              '${controller.savedItemIds.length} collectible(s) tracked',
+            ),
           ),
         ),
         Card(
           child: ListTile(
             title: const Text('Notifications'),
-            subtitle: Text('${controller.notifications.length} update(s) ready'),
+            subtitle: Text(
+              '${controller.notifications.length} update(s) ready',
+            ),
           ),
         ),
         const Card(
