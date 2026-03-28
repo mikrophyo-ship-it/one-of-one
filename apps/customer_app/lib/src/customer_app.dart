@@ -717,27 +717,40 @@ class CustomerController extends ChangeNotifier {
     return statusMessage!;
   }
 
-  Future<String> addComment({
+  Future<MarketplaceActionResult<ItemComment>> addComment({
     required String itemId,
     required String body,
   }) async {
     final String? authMessage = _requireAuthenticatedAction();
     if (authMessage != null) {
-      return _failAction(authMessage);
+      return MarketplaceActionResult<ItemComment>(
+        success: false,
+        message: _failAction(authMessage),
+      );
     }
 
-    return _runAction<ItemComment>(
-      operation: () => _repository.addItemComment(itemId: itemId, body: body),
-      onSuccess: (ItemComment? comment, String message) {
-        if (comment != null) {
-          _prependLocalNotification(
-            title: 'New comment',
-            body: 'Conversation updated for ${itemById(itemId)?.serialNumber ?? itemId}.',
-          );
-        }
-        return message;
-      },
-    );
+    errorMessage = null;
+    statusMessage = null;
+    notifyListeners();
+
+    final MarketplaceActionResult<ItemComment> result = await _repository
+        .addItemComment(itemId: itemId, body: body);
+
+    if (result.success) {
+      if (result.data != null) {
+        _prependLocalNotification(
+          title: 'New comment',
+          body:
+              'Conversation updated for ${itemById(itemId)?.serialNumber ?? itemId}.',
+        );
+      }
+      statusMessage = result.message;
+    } else {
+      errorMessage = result.message;
+    }
+
+    notifyListeners();
+    return result;
   }
 
   Future<String> confirmDelivery({required String orderId}) async {
@@ -2160,51 +2173,145 @@ class _CommentsSection extends StatefulWidget {
 
 class _CommentsSectionState extends State<_CommentsSection> {
   final TextEditingController _commentController = TextEditingController();
+  bool _isPosting = false;
+  String? _composerMessage;
+  bool _composerMessageIsError = false;
+
+  bool get _canSubmit =>
+      !_isPosting && _commentController.text.trim().isNotEmpty;
 
   @override
   void dispose() {
+    _isPosting = false;
     _commentController.dispose();
     super.dispose();
   }
 
+  Future<void> _submitComment() async {
+    if (!_canSubmit) {
+      return;
+    }
+
+    final String draft = _commentController.text.trim();
+    setState(() {
+      _isPosting = true;
+      _composerMessage = null;
+      _composerMessageIsError = false;
+    });
+
+    final MarketplaceActionResult<ItemComment> result = await widget.controller
+        .addComment(itemId: widget.item.id, body: draft);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isPosting = false;
+      _composerMessage = result.success
+          ? 'Comment posted to the collector conversation.'
+          : result.message;
+      _composerMessageIsError = !result.success;
+      if (result.success) {
+        _commentController.clear();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final Color feedbackColor = _composerMessageIsError
+        ? theme.colorScheme.error
+        : OneOfOneTheme.gold;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
           'Collector conversation',
-          style: Theme.of(context).textTheme.headlineSmall,
+          style: theme.textTheme.headlineSmall,
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _commentController,
           minLines: 2,
           maxLines: 4,
-          decoration: const InputDecoration(
+          textInputAction: TextInputAction.newline,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
             labelText: 'Share your thoughts on this collectible',
+            helperText: _isPosting
+                ? 'Posting your comment to the verified collector conversation...'
+                : 'Thoughtful collector notes help establish provenance and context.',
+            suffixIcon: _isPosting
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
           ),
+          enabled: !_isPosting,
         ),
+        if (_composerMessage != null) ...<Widget>[
+          const SizedBox(height: 10),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: Row(
+              key: ValueKey<String>(
+                '${_composerMessageIsError ? 'error' : 'success'}:${_composerMessage!}',
+              ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  _composerMessageIsError
+                      ? Icons.error_outline_rounded
+                      : Icons.check_circle_outline_rounded,
+                  size: 18,
+                  color: feedbackColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _composerMessage!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: feedbackColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton(
-            onPressed: () async {
-              final String message = await widget.controller.addComment(
-                itemId: widget.item.id,
-                body: _commentController.text,
-              );
-              if (!context.mounted) {
-                return;
-              }
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(message)));
-              if (message.startsWith('Comment posted')) {
-                _commentController.clear();
-              }
-            },
-            child: const Text('Post comment'),
+            onPressed: _canSubmit ? _submitComment : null,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: _isPosting
+                  ? const Row(
+                      key: ValueKey<String>('posting'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Posting...'),
+                      ],
+                    )
+                  : const Text(
+                      'Post comment',
+                      key: ValueKey<String>('idle'),
+                    ),
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -2219,8 +2326,13 @@ class _CommentsSectionState extends State<_CommentsSection> {
           (ItemComment comment) => Card(
             child: ListTile(
               title: Text(comment.userDisplayName),
-              subtitle: Text(comment.body),
-              trailing: Text(comment.createdAt.toIso8601String().split('T').first),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(comment.body),
+              ),
+              trailing: Text(
+                comment.createdAt.toIso8601String().split('T').first,
+              ),
             ),
           ),
         ),

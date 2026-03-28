@@ -356,6 +356,208 @@ void main() {
     expect(find.text('Authorize checkout'), findsNothing);
     expect(find.text('Resell item'), findsNothing);
   });
+
+  testWidgets(
+    'comment composer shows posting feedback, blocks duplicate submits, and renders the real commenter name',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final Completer<void> gate = Completer<void>();
+      final _ControlledCommentDemoCatalog repository =
+          _ControlledCommentDemoCatalog(
+            gate: gate,
+            commenterName: 'Avery Collector',
+          );
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'collector_commenter',
+          email: 'avery@example.com',
+          displayName: 'Avery Collector',
+          username: 'averycollector',
+        ),
+      );
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const MockPaymentProvider(),
+          ),
+          authService: authService,
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(
+        tester,
+        find.text('Collector conversation'),
+      );
+
+      await _enterField(
+        tester,
+        'Share your thoughts on this collectible',
+        'Love the finish on this release.',
+      );
+
+      final Finder postCommentButton = find.widgetWithText(
+        FilledButton,
+        'Post comment',
+      );
+      await tester.tap(postCommentButton);
+      await tester.pump();
+      await tester.tapAt(tester.getCenter(find.text('Posting...')));
+      await tester.pump();
+
+      expect(repository.addCommentCalls, 1);
+      expect(find.text('Posting...'), findsOneWidget);
+      expect(find.textContaining('verified collector conversation'), findsOneWidget);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Comment posted to the collector conversation.'),
+        findsOneWidget,
+      );
+      expect(find.text('Love the finish on this release.'), findsOneWidget);
+      expect(find.text('Avery Collector'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'backing out during comment submission does not leave a stuck loading spinner',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final Completer<void> gate = Completer<void>();
+      final _ControlledCommentDemoCatalog repository =
+          _ControlledCommentDemoCatalog(gate: gate);
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'collector_commenter',
+          email: 'avery@example.com',
+          displayName: 'Avery Collector',
+          username: 'averycollector',
+        ),
+      );
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const MockPaymentProvider(),
+          ),
+          authService: authService,
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(
+        tester,
+        find.text('Collector conversation'),
+      );
+
+      await _enterField(
+        tester,
+        'Share your thoughts on this collectible',
+        'Posting while leaving the screen.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Post comment'));
+      await tester.pump();
+
+      expect(repository.addCommentCalls, 1);
+      expect(find.text('Posting...'), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Collector conversation'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'comment composer surfaces failures and allows retry after the request finishes',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final Completer<void> gate = Completer<void>()..complete();
+      final _ControlledCommentDemoCatalog repository =
+          _ControlledCommentDemoCatalog(
+            gate: gate,
+            failMessage: 'Comment service unavailable right now.',
+          );
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'collector_commenter',
+          email: 'avery@example.com',
+          displayName: 'Avery Collector',
+          username: 'averycollector',
+        ),
+      );
+
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const MockPaymentProvider(),
+          ),
+          authService: authService,
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapNav(tester, 'Shop');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(
+        tester,
+        find.text('Collector conversation'),
+      );
+
+      await _enterField(
+        tester,
+        'Share your thoughts on this collectible',
+        'This should fail once.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Post comment'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Comment service unavailable right now.'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(FilledButton, 'Post comment'), findsOneWidget);
+      expect(repository.addCommentCalls, 1);
+    },
+  );
 }
 
 Future<void> _tapNav(WidgetTester tester, String label) async {
@@ -525,6 +727,67 @@ class _TestAuthService extends SupabaseAuthService {
       password: password,
       displayName: displayName.trim(),
       username: username.trim().toLowerCase(),
+    );
+  }
+}
+
+class _ControlledCommentDemoCatalog extends DemoCatalog {
+  _ControlledCommentDemoCatalog({
+    required this.gate,
+    this.commenterName = 'Avery Collector',
+    this.failMessage,
+  });
+
+  final Completer<void> gate;
+  final String commenterName;
+  final String? failMessage;
+  final List<ItemComment> _postedComments = <ItemComment>[];
+
+  int addCommentCalls = 0;
+
+  @override
+  List<ItemComment> commentsForItem(String itemId) => List<ItemComment>.unmodifiable(
+    <ItemComment>[
+      ..._postedComments.where((ItemComment comment) => comment.itemId == itemId),
+      ...super.commentsForItem(itemId),
+    ],
+  );
+
+  @override
+  Future<MarketplaceActionResult<ItemComment>> addItemComment({
+    required String itemId,
+    required String body,
+  }) async {
+    addCommentCalls += 1;
+    await gate.future;
+
+    final String trimmedBody = body.trim();
+    if (trimmedBody.isEmpty) {
+      return const MarketplaceActionResult<ItemComment>(
+        success: false,
+        message: 'Write a comment before posting.',
+      );
+    }
+
+    if (failMessage != null) {
+      return MarketplaceActionResult<ItemComment>(
+        success: false,
+        message: failMessage!,
+      );
+    }
+
+    final ItemComment comment = ItemComment(
+      id: 'controlled_comment_$addCommentCalls',
+      itemId: itemId,
+      userDisplayName: commenterName,
+      body: trimmedBody,
+      createdAt: DateTime(2026, 3, 28),
+    );
+    _postedComments.insert(0, comment);
+    return MarketplaceActionResult<ItemComment>(
+      success: true,
+      message: 'Comment posted to the collectible conversation.',
+      data: comment,
     );
   }
 }
