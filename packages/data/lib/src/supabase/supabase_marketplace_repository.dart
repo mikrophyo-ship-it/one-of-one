@@ -768,8 +768,12 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
 
     final List<dynamic> artistRows = await _client!
         .from('artists')
-        .select('id, slug, display_name, royalty_bps, authenticity_statement')
-        .eq('is_active', true);
+        .select(
+          'id, slug, display_name, royalty_bps, authenticity_statement, short_bio, full_bio, artist_statement, instagram_url, website_url, is_featured, sort_order, profile_status',
+        )
+        .eq('profile_status', 'published')
+        .order('sort_order')
+        .order('display_name');
     final List<dynamic> artworkRows = await _client!
         .from('artworks')
         .select('id, artist_id, title, story, provenance_proof, creation_date');
@@ -1076,6 +1080,14 @@ class SupabaseMarketplaceRepository implements MarketplaceRepository {
       slug: row['slug'].toString(),
       royaltyBps: (row['royalty_bps'] as num?)?.toInt() ?? 0,
       authenticityStatement: row['authenticity_statement'].toString(),
+      shortBio: _nullableString(row['short_bio']),
+      fullBio: _nullableString(row['full_bio']),
+      artistStatement: _nullableString(row['artist_statement']),
+      instagramUrl: _nullableString(row['instagram_url']),
+      websiteUrl: _nullableString(row['website_url']),
+      isFeatured: row['is_featured'] == true,
+      sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
+      profileStatus: _nullableString(row['profile_status']) ?? 'published',
     );
   }
 

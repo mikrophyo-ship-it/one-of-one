@@ -39,7 +39,27 @@ abstract class AdminOperationsRepository {
     required String slug,
     required int royaltyBps,
     required String authenticityStatement,
-    required bool isActive,
+    String? shortBio,
+    String? fullBio,
+    String? artistStatement,
+    String? instagramUrl,
+    String? websiteUrl,
+    required bool isFeatured,
+    required int sortOrder,
+    required String profileStatus,
+  });
+
+  Future<MarketplaceActionResult<void>> uploadArtistImage({
+    required String artistId,
+    required String slot,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  });
+
+  Future<MarketplaceActionResult<void>> removeArtistImage({
+    required String artistId,
+    required String slot,
   });
 
   Future<MarketplaceActionResult<AdminArtworkRecord>> upsertArtwork({

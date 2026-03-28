@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:utils/utils.dart';
 
 import 'features/audit/audit_panel.dart';
+import 'features/artists/artists_panel.dart';
 import 'features/catalog/catalog_panel.dart';
 import 'features/catalog/claim_operations_dialogs.dart';
 import 'features/customers/customers_panel.dart';
@@ -96,6 +97,7 @@ class _AdminShellState extends State<AdminShell> {
     'Finance',
     'Listings',
     'Disputes',
+    'Artists',
     'Catalog',
     'Audit',
     'Settings',
@@ -113,6 +115,7 @@ class _AdminShellState extends State<AdminShell> {
   bool _authBusy = false;
   bool _refreshing = false;
   final Set<String> _catalogMediaBusyItemIds = <String>{};
+  final Set<String> _artistMediaBusySlots = <String>{};
   String? _bannerMessage;
   bool _bannerIsError = false;
   AdminOperationsSnapshot? _snapshot;
@@ -197,6 +200,13 @@ class _AdminShellState extends State<AdminShell> {
         disputes: _snapshot?.disputes ?? const <AdminDisputeRecord>[],
         onUpdateDispute: _updateDispute,
         onFlagItem: _flagItem,
+      ),
+      ArtistsPanel(
+        artists: _snapshot?.artists ?? const <AdminArtistRecord>[],
+        busySlots: _artistMediaBusySlots,
+        onSaveArtist: _saveArtistProfile,
+        onUploadArtistImage: _uploadArtistImage,
+        onRemoveArtistImage: _removeArtistImage,
       ),
       CatalogPanel(
         artists: _snapshot?.artists ?? const <AdminArtistRecord>[],
@@ -488,7 +498,9 @@ class _AdminShellState extends State<AdminShell> {
           slug: input.slug,
           royaltyBps: input.royaltyBps,
           authenticityStatement: input.authenticityStatement,
-          isActive: input.isActive,
+          isFeatured: false,
+          sortOrder: 0,
+          profileStatus: input.isActive ? 'published' : 'draft',
         );
     if (!mounted) {
       return;
@@ -497,6 +509,164 @@ class _AdminShellState extends State<AdminShell> {
       _snapshot = _adminService.snapshot();
       _bannerMessage = result.message;
       _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _saveArtistProfile(AdminArtistEditorValue input) async {
+    final MarketplaceActionResult<AdminArtistRecord> result =
+        await _adminService.upsertArtist(
+          artistId: input.artistId,
+          displayName: input.displayName,
+          slug: input.slug,
+          royaltyBps: input.royaltyBps,
+          authenticityStatement: input.authenticityStatement,
+          shortBio: input.shortBio,
+          fullBio: input.fullBio,
+          artistStatement: input.artistStatement,
+          instagramUrl: input.instagramUrl,
+          websiteUrl: input.websiteUrl,
+          isFeatured: input.isFeatured,
+          sortOrder: input.sortOrder,
+          profileStatus: input.profileStatus,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _snapshot = _adminService.snapshot();
+      _bannerMessage = result.message;
+      _bannerIsError = !result.success;
+    });
+  }
+
+  Future<void> _uploadArtistImage(AdminArtistRecord artist, String slot) async {
+    final String busyKey = '${artist.artistId}:$slot';
+    final bool hasExisting = slot == 'portrait'
+        ? artist.portraitImageUrl != null
+        : artist.heroImageUrl != null;
+    if (hasExisting) {
+      setState(() {
+        _bannerMessage =
+            'This artist already has ${slot == 'hero' ? 'a hero image' : 'a portrait'}. Remove it before uploading a replacement.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final PlatformFile file = result.files.first;
+    if (file.bytes == null) {
+      setState(() {
+        _bannerMessage = 'Selected artist image data was not readable.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
+    final String fileName = file.name.trim().isEmpty
+        ? 'artist-image.jpg'
+        : file.name;
+    final String? contentType = _contentTypeForFileName(fileName);
+    if (contentType == null) {
+      setState(() {
+        _bannerMessage = 'Use PNG, JPG, WEBP, or GIF for artist editorial media.';
+        _bannerIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _artistMediaBusySlots.add(busyKey);
+      _bannerMessage =
+          'Uploading ${slot == 'hero' ? 'hero image' : 'portrait'} for ${artist.displayName}...';
+      _bannerIsError = false;
+    });
+    final MarketplaceActionResult<void> uploadResult = await _adminService
+        .uploadArtistImage(
+          artistId: artist.artistId,
+          slot: slot,
+          bytes: file.bytes!,
+          fileName: fileName,
+          contentType: contentType,
+        );
+    if (!mounted) {
+      return;
+    }
+
+    if (uploadResult.success) {
+      await _refreshAdminData();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    setState(() {
+      _artistMediaBusySlots.remove(busyKey);
+      _bannerMessage = uploadResult.message;
+      _bannerIsError = !uploadResult.success;
+    });
+  }
+
+  Future<void> _removeArtistImage(AdminArtistRecord artist, String slot) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1712),
+          title: Text(
+            slot == 'hero' ? 'Remove hero image?' : 'Remove portrait image?',
+          ),
+          content: Text(
+            'Remove the current ${slot == 'hero' ? 'hero image' : 'portrait'} for ${artist.displayName}. You can upload a replacement afterward.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Keep image'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Remove image'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    final String busyKey = '${artist.artistId}:$slot';
+    setState(() {
+      _artistMediaBusySlots.add(busyKey);
+      _bannerMessage =
+          'Removing ${slot == 'hero' ? 'hero image' : 'portrait'} for ${artist.displayName}...';
+      _bannerIsError = false;
+    });
+    final MarketplaceActionResult<void> removeResult = await _adminService
+        .removeArtistImage(artistId: artist.artistId, slot: slot);
+    if (!mounted) {
+      return;
+    }
+
+    if (removeResult.success) {
+      await _refreshAdminData();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    setState(() {
+      _artistMediaBusySlots.remove(busyKey);
+      _bannerMessage = removeResult.message;
+      _bannerIsError = !removeResult.success;
     });
   }
 

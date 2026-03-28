@@ -10,6 +10,53 @@ import 'package:services/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  testWidgets('admin artist management renders premium CMS filters', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final _FakeAdminRepository repository = _FakeAdminRepository();
+    final _TestAdminAuthService authService = _TestAdminAuthService(
+      initialSession: _buildSession(
+        id: 'admin_1',
+        email: 'admin@example.com',
+        displayName: 'Admin Operator',
+        username: 'adminoperator',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: AdminShell(
+          authService: authService,
+          adminService: AdminOperationsService(repository: repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapRailLabel(tester, 'Artists');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Artist management'), findsOneWidget);
+    expect(find.text('Maya Vale'), findsOneWidget);
+    expect(find.text('published'), findsWidgets);
+    expect(find.text('featured'), findsWidgets);
+
+    await _enterField(tester, 'Search artist', 'maya');
+    expect(find.text('Maya Vale'), findsOneWidget);
+
+    await _selectDropdownValue(tester, 'Featured', 'Featured');
+    expect(find.text('Maya Vale'), findsOneWidget);
+
+    await _selectDropdownValue(tester, 'Sort', 'Artist name');
+    expect(find.text('Create artist profile'), findsOneWidget);
+  });
+
   testWidgets('admin catalog filters and sorts inventory operationally', (
     WidgetTester tester,
   ) async {
@@ -946,9 +993,21 @@ class _FakeAdminRepository implements AdminOperationsRepository {
         displayName: 'Maya Vale',
         slug: 'maya-vale',
         royaltyBps: 1200,
-        isActive: true,
+        authenticityStatement:
+            'Created and finished by Maya Vale in-studio without generative tooling.',
+        shortBio: 'Hand-finished collectible garments and portrait studies.',
+        fullBio: null,
+        artistStatement: null,
+        instagramUrl: null,
+        websiteUrl: null,
+        portraitImageUrl: null,
+        heroImageUrl: null,
+        isFeatured: true,
+        sortOrder: 0,
+        profileStatus: 'published',
         artworkCount: 1,
         inventoryCount: 2,
+        updatedAt: null,
       ),
     ];
     _artworks = <AdminArtworkRecord>[
@@ -1301,9 +1360,41 @@ class _FakeAdminRepository implements AdminOperationsRepository {
     required String slug,
     required int royaltyBps,
     required String authenticityStatement,
-    required bool isActive,
+    String? shortBio,
+    String? fullBio,
+    String? artistStatement,
+    String? instagramUrl,
+    String? websiteUrl,
+    required bool isFeatured,
+    required int sortOrder,
+    required String profileStatus,
   }) async {
     return const MarketplaceActionResult<AdminArtistRecord>(
+      success: false,
+      message: 'Not used in this verification test.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> uploadArtistImage({
+    required String artistId,
+    required String slot,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  }) async {
+    return const MarketplaceActionResult<void>(
+      success: false,
+      message: 'Not used in this verification test.',
+    );
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> removeArtistImage({
+    required String artistId,
+    required String slot,
+  }) async {
+    return const MarketplaceActionResult<void>(
       success: false,
       message: 'Not used in this verification test.',
     );

@@ -248,7 +248,14 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
     required String slug,
     required int royaltyBps,
     required String authenticityStatement,
-    required bool isActive,
+    String? shortBio,
+    String? fullBio,
+    String? artistStatement,
+    String? instagramUrl,
+    String? websiteUrl,
+    required bool isFeatured,
+    required int sortOrder,
+    required String profileStatus,
   }) async {
     final String? configError = _requireConfigured();
     if (configError != null) {
@@ -267,7 +274,14 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
           'p_slug': slug,
           'p_royalty_bps': royaltyBps,
           'p_authenticity_statement': authenticityStatement,
-          'p_is_active': isActive,
+          'p_short_bio': shortBio,
+          'p_full_bio': fullBio,
+          'p_artist_statement': artistStatement,
+          'p_instagram_url': instagramUrl,
+          'p_website_url': websiteUrl,
+          'p_is_featured': isFeatured,
+          'p_sort_order': sortOrder,
+          'p_profile_status': profileStatus,
         },
       );
       await refresh();
@@ -280,6 +294,151 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
       return MarketplaceActionResult<AdminArtistRecord>(
         success: false,
         message: _friendlyMessage(error.message),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> uploadArtistImage({
+    required String artistId,
+    required String slot,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(success: false, message: configError);
+    }
+
+    final MarketplaceActionResult<void> accessCheck = await _assertAdminAccess();
+    if (!accessCheck.success) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: accessCheck.message,
+      );
+    }
+
+    final String sanitizedName = fileName.replaceAll(
+      RegExp(r'[^a-zA-Z0-9._-]'),
+      '_',
+    );
+    final String storagePath =
+        'artists/$artistId/$slot-${DateTime.now().millisecondsSinceEpoch}-$sanitizedName';
+
+    try {
+      await _client!.storage.from('artist-editorial').uploadBinary(
+        storagePath,
+        bytes,
+        fileOptions: FileOptions(contentType: contentType, upsert: false),
+      );
+      await _client!.rpc(
+        'admin_attach_artist_media_asset',
+        params: <String, dynamic>{
+          'p_artist_id': artistId,
+          'p_slot': slot,
+          'p_storage_bucket': 'artist-editorial',
+          'p_storage_path': storagePath,
+          'p_media_type': contentType,
+          'p_visibility': 'public',
+        },
+      );
+      return MarketplaceActionResult<void>(
+        success: true,
+        message: slot == 'hero'
+            ? 'Artist hero image uploaded.'
+            : 'Artist portrait uploaded.',
+      );
+    } on PostgrestException catch (error) {
+      try {
+        await _client!.storage.from('artist-editorial').remove(<String>[storagePath]);
+      } on StorageException {
+        // Keep original failure for operator visibility.
+      }
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    } on StorageException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: error.toString(),
+      );
+    } catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: error.toString(),
+      );
+    }
+  }
+
+  @override
+  Future<MarketplaceActionResult<void>> removeArtistImage({
+    required String artistId,
+    required String slot,
+  }) async {
+    final String? configError = _requireConfigured();
+    if (configError != null) {
+      return MarketplaceActionResult<void>(success: false, message: configError);
+    }
+
+    final MarketplaceActionResult<void> accessCheck = await _assertAdminAccess();
+    if (!accessCheck.success) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: accessCheck.message,
+      );
+    }
+
+    try {
+      final List<dynamic> deletedRows =
+          (await _client!.rpc(
+                'admin_remove_artist_media_asset',
+                params: <String, dynamic>{
+                  'p_artist_id': artistId,
+                  'p_slot': slot,
+                },
+              ))
+              as List<dynamic>;
+
+      final Map<String, List<String>> pathsByBucket = <String, List<String>>{};
+      for (final dynamic row in deletedRows) {
+        final Map<String, dynamic> data = row as Map<String, dynamic>;
+        final String? bucket = _nullableString(data['storage_bucket']);
+        final String? path = _nullableString(data['storage_path']);
+        if (bucket == null || path == null) {
+          continue;
+        }
+        pathsByBucket.putIfAbsent(bucket, () => <String>[]).add(path);
+      }
+
+      for (final MapEntry<String, List<String>> entry in pathsByBucket.entries) {
+        try {
+          await _client!.storage.from(entry.key).remove(entry.value);
+        } on StorageException {
+          return MarketplaceActionResult<void>(
+            success: true,
+            message:
+                'Artist image removed, but storage cleanup needs a follow-up check.',
+          );
+        }
+      }
+
+      return MarketplaceActionResult<void>(
+        success: true,
+        message: slot == 'hero'
+            ? 'Artist hero image removed.'
+            : 'Artist portrait removed.',
+      );
+    } on PostgrestException catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: _friendlyMessage(error.message),
+      );
+    } catch (error) {
+      return MarketplaceActionResult<void>(
+        success: false,
+        message: error.toString(),
       );
     }
   }
@@ -954,14 +1113,33 @@ class SupabaseAdminOperationsRepository implements AdminOperationsRepository {
   }
 
   AdminArtistRecord _artistFromRow(Map<String, dynamic> row) {
+    final String? portraitBucket = _nullableString(row['portrait_storage_bucket']);
+    final String? portraitPath = _nullableString(row['portrait_storage_path']);
+    final String? heroBucket = _nullableString(row['hero_storage_bucket']);
+    final String? heroPath = _nullableString(row['hero_storage_path']);
     return AdminArtistRecord(
       artistId: row['artist_id'].toString(),
       displayName: row['display_name'].toString(),
       slug: row['slug'].toString(),
       royaltyBps: _toInt(row['royalty_bps']),
-      isActive: row['is_active'] == true,
+      authenticityStatement: _nullableString(row['authenticity_statement']) ?? '',
+      shortBio: _nullableString(row['short_bio']),
+      fullBio: _nullableString(row['full_bio']),
+      artistStatement: _nullableString(row['artist_statement']),
+      instagramUrl: _nullableString(row['instagram_url']),
+      websiteUrl: _nullableString(row['website_url']),
+      portraitImageUrl: portraitBucket != null && portraitPath != null
+          ? _client?.storage.from(portraitBucket).getPublicUrl(portraitPath)
+          : null,
+      heroImageUrl: heroBucket != null && heroPath != null
+          ? _client?.storage.from(heroBucket).getPublicUrl(heroPath)
+          : null,
+      isFeatured: row['is_featured'] == true,
+      sortOrder: _toInt(row['sort_order']),
+      profileStatus: _nullableString(row['profile_status']) ?? 'draft',
       artworkCount: _toInt(row['artwork_count']),
       inventoryCount: _toInt(row['inventory_count']),
+      updatedAt: _nullableDateTime(row['updated_at']),
     );
   }
 

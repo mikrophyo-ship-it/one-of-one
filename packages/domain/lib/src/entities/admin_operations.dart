@@ -206,18 +206,40 @@ class AdminArtistRecord {
     required this.displayName,
     required this.slug,
     required this.royaltyBps,
-    required this.isActive,
+    required this.authenticityStatement,
+    required this.shortBio,
+    required this.fullBio,
+    required this.artistStatement,
+    required this.instagramUrl,
+    required this.websiteUrl,
+    required this.portraitImageUrl,
+    required this.heroImageUrl,
+    required this.isFeatured,
+    required this.sortOrder,
+    required this.profileStatus,
     required this.artworkCount,
     required this.inventoryCount,
+    required this.updatedAt,
   });
 
   final String artistId;
   final String displayName;
   final String slug;
   final int royaltyBps;
-  final bool isActive;
+  final String authenticityStatement;
+  final String? shortBio;
+  final String? fullBio;
+  final String? artistStatement;
+  final String? instagramUrl;
+  final String? websiteUrl;
+  final String? portraitImageUrl;
+  final String? heroImageUrl;
+  final bool isFeatured;
+  final int sortOrder;
+  final String profileStatus;
   final int artworkCount;
   final int inventoryCount;
+  final DateTime? updatedAt;
 }
 
 class AdminArtworkRecord {

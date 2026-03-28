@@ -106,8 +106,14 @@ class CatalogPanel extends StatelessWidget {
                           DataCell(Text('${artist.artworkCount}')),
                           DataCell(Text('${artist.inventoryCount}')),
                           DataCell(
-                            StatusPill(
-                              label: artist.isActive ? 'active' : 'inactive',
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: <Widget>[
+                                StatusPill(label: artist.profileStatus),
+                                if (artist.isFeatured)
+                                  const StatusPill(label: 'featured'),
+                              ],
                             ),
                           ),
                         ],

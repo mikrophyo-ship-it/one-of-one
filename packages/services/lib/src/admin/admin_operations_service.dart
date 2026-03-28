@@ -69,7 +69,14 @@ class AdminOperationsService {
     required String slug,
     required int royaltyBps,
     required String authenticityStatement,
-    required bool isActive,
+    String? shortBio,
+    String? fullBio,
+    String? artistStatement,
+    String? instagramUrl,
+    String? websiteUrl,
+    required bool isFeatured,
+    required int sortOrder,
+    required String profileStatus,
   }) {
     return repository.upsertArtist(
       artistId: artistId,
@@ -77,8 +84,38 @@ class AdminOperationsService {
       slug: slug,
       royaltyBps: royaltyBps,
       authenticityStatement: authenticityStatement,
-      isActive: isActive,
+      shortBio: shortBio,
+      fullBio: fullBio,
+      artistStatement: artistStatement,
+      instagramUrl: instagramUrl,
+      websiteUrl: websiteUrl,
+      isFeatured: isFeatured,
+      sortOrder: sortOrder,
+      profileStatus: profileStatus,
     );
+  }
+
+  Future<MarketplaceActionResult<void>> uploadArtistImage({
+    required String artistId,
+    required String slot,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  }) {
+    return repository.uploadArtistImage(
+      artistId: artistId,
+      slot: slot,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+    );
+  }
+
+  Future<MarketplaceActionResult<void>> removeArtistImage({
+    required String artistId,
+    required String slot,
+  }) {
+    return repository.removeArtistImage(artistId: artistId, slot: slot);
   }
 
   Future<MarketplaceActionResult<AdminArtworkRecord>> upsertArtwork({

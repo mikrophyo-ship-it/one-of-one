@@ -2628,7 +2628,7 @@ class _FeaturedArtistCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                artist.authenticityStatement,
+                _artistSummaryLine(artist),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -4090,6 +4090,10 @@ class ArtistProfileScreen extends StatelessWidget {
     final String? heroImage = items.isEmpty || items.first.imageUrls.isEmpty
         ? null
         : items.first.imageUrls.first;
+    final String artistStatement =
+        artist.artistStatement?.trim().isNotEmpty == true
+        ? artist.artistStatement!.trim()
+        : artist.authenticityStatement;
     return Scaffold(
       appBar: AppBar(title: Text(artist.displayName)),
       body: ListView(
@@ -4161,10 +4165,34 @@ class ArtistProfileScreen extends StatelessWidget {
                               style: Theme.of(context).textTheme.headlineSmall,
                             ),
                             const SizedBox(height: 8),
-                            Text(artist.authenticityStatement),
+                            Text(artistStatement),
                           ],
                         ),
                       ),
+                      if (artist.fullBio?.trim().isNotEmpty == true) ...<Widget>[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.34),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'Profile',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(artist.fullBio!.trim()),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -4215,11 +4243,27 @@ class ArtistProfileScreen extends StatelessWidget {
 }
 
 String _artistEditorialBio(Artist artist, int artworkCount, int itemCount) {
+  final String? shortBio = artist.shortBio?.trim();
+  if (shortBio != null && shortBio.isNotEmpty) {
+    return shortBio;
+  }
   final String worksLabel = artworkCount == 1 ? 'work' : 'works';
   final String piecesLabel = itemCount == 1 ? 'piece' : 'pieces';
   return '${artist.displayName} is featured on One of One with '
       '$artworkCount published $worksLabel and $itemCount collectible $piecesLabel. '
       'Every release remains platform-verified and tied to the artist statement below.';
+}
+
+String _artistSummaryLine(Artist artist) {
+  final String? shortBio = artist.shortBio?.trim();
+  if (shortBio != null && shortBio.isNotEmpty) {
+    return shortBio;
+  }
+  final String? statement = artist.artistStatement?.trim();
+  if (statement != null && statement.isNotEmpty) {
+    return statement;
+  }
+  return artist.authenticityStatement;
 }
 
 class _EditorialImage extends StatelessWidget {
