@@ -213,50 +213,29 @@ class _CustomerRootState extends State<CustomerRoot>
           return AuthScreen(controller: controller);
         }
         return Scaffold(
+          extendBody: true,
           appBar: AppBar(
-            title: const Text('ONE OF ONE'),
+            toolbarHeight: 64,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            titleSpacing: 20,
+            title: Text(
+              'ONE OF ONE',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: const Color(0xFFF2EBDD),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+              ),
+            ),
             actions: <Widget>[
-              IconButton(
-                key: const ValueKey<String>('customer-notifications-button'),
-                onPressed: controller.toggleInbox,
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: <Widget>[
-                    const Icon(Icons.notifications_none),
-                    if (controller.unreadNotificationCount > 0)
-                      Positioned(
-                        right: -8,
-                        top: -8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: const Color(0xFF0D0D0D),
-                              width: 1.5,
-                            ),
-                          ),
-                          constraints: const BoxConstraints(minWidth: 18),
-                          child: Text(
-                            controller.unreadNotificationCount > 99
-                                ? '99+'
-                                : '${controller.unreadNotificationCount}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: _PremiumNotificationButton(
+                  unreadCount: controller.unreadNotificationCount,
+                  onPressed: controller.toggleInbox,
                 ),
-                tooltip: 'Notifications',
               ),
             ],
           ),
@@ -289,34 +268,184 @@ class _CustomerRootState extends State<CustomerRoot>
                 ),
             ],
           ),
-          bottomNavigationBar: NavigationBar(
+          bottomNavigationBar: _LuxuryBottomDock(
             selectedIndex: controller.index,
             onDestinationSelected: controller.setIndex,
-            destinations: const <Widget>[
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                label: 'Home',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.auto_awesome_mosaic_outlined),
-                label: 'Shop',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.qr_code_scanner_outlined),
-                label: 'Scan',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.inventory_2_outlined),
-                label: 'Vault',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                label: 'Profile',
-              ),
-            ],
           ),
         );
       },
+    );
+  }
+}
+
+class _PremiumNotificationButton extends StatelessWidget {
+  const _PremiumNotificationButton({
+    required this.unreadCount,
+    required this.onPressed,
+  });
+
+  final int unreadCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey<String>('customer-notifications-button'),
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFF171717),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              const Center(
+                child: Icon(
+                  Icons.notifications_none,
+                  size: 22,
+                  color: Color(0xFFF2EBDD),
+                ),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: const Color(0xFF0D0D0D),
+                        width: 1.5,
+                      ),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 18),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : '$unreadCount',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LuxuryBottomDock extends StatelessWidget {
+  const _LuxuryBottomDock({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 6, right: 6, bottom: 4),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xFF111111),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.24),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                navigationBarTheme: NavigationBarThemeData(
+                  backgroundColor: Colors.transparent,
+                  surfaceTintColor: Colors.transparent,
+                  height: 72,
+                  labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((
+                    Set<WidgetState> states,
+                  ) {
+                    final bool selected = states.contains(WidgetState.selected);
+                    return Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: selected
+                          ? const Color(0xFFF2EBDD)
+                          : const Color(0xFF9C9385),
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      letterSpacing: 0.2,
+                    );
+                  }),
+                  iconTheme: WidgetStateProperty.resolveWith<IconThemeData?>((
+                    Set<WidgetState> states,
+                  ) {
+                    final bool selected = states.contains(WidgetState.selected);
+                    return IconThemeData(
+                      color: selected ? Colors.black : const Color(0xFFC3BBAD),
+                      size: 22,
+                    );
+                  }),
+                  indicatorColor: const Color(0xFFE0C88A),
+                ),
+              ),
+              child: NavigationBar(
+                backgroundColor: Colors.transparent,
+                selectedIndex: selectedIndex,
+                onDestinationSelected: onDestinationSelected,
+                destinations: const <Widget>[
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: 'Home',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.auto_awesome_mosaic_outlined),
+                    selectedIcon: Icon(Icons.auto_awesome_mosaic_rounded),
+                    label: 'Shop',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.qr_code_scanner_outlined),
+                    selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+                    label: 'Scan',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.inventory_2_outlined),
+                    selectedIcon: Icon(Icons.inventory_2_rounded),
+                    label: 'Vault',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person_rounded),
+                    label: 'Profile',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2698,15 +2827,78 @@ class ExploreScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: <Widget>[
-        const TextField(
-          decoration: InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            labelText: 'Filter by artist, price, availability',
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Curated shop',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: const Color(0xFFF4EEDF),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Browse verified pieces by artist, collectible, or serial.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFFB9B1A5),
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search artist, collectible, or serial',
+                  hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF8E867A),
+                  ),
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: const Color(0xFF101010),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(
+                      color: OneOfOneTheme.gold.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: <Widget>[
+                    _ShopQuickFilterChip(label: 'Available now'),
+                    SizedBox(width: 10),
+                    _ShopQuickFilterChip(label: 'Verified resale'),
+                    SizedBox(width: 10),
+                    _ShopQuickFilterChip(label: 'Artist-led drops'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         if (controller.items.isEmpty)
           const Card(
             child: ListTile(
@@ -2721,7 +2913,7 @@ class ExploreScreen extends StatelessWidget {
             crossAxisCount: 2,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            childAspectRatio: 0.58,
+            childAspectRatio: 0.53,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: controller.items.map((UniqueItem item) {
@@ -2741,72 +2933,141 @@ class _ShopItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Artist? artist = controller.artistFor(item);
+    final String availabilityLabel = _shopAvailabilityLabel(item);
+    final bool isSaved = controller.savedItemIds.contains(item.id);
     return InkWell(
       borderRadius: BorderRadius.circular(28),
       onTap: () => _openItemDetail(context, controller, item.id),
-      child: Container(
+      child: Ink(
         decoration: BoxDecoration(
           color: const Color(0xFF171717),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.18)),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
-                ),
-                child: _EditorialImage(
-                  imageUrl: item.imageUrls.isEmpty
-                      ? null
-                      : item.imageUrls.first,
-                ),
+            AspectRatio(
+              aspectRatio: 0.86,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28),
+                    ),
+                    child: _EditorialImage(
+                      imageUrl: item.imageUrls.isEmpty
+                          ? null
+                          : item.imageUrls.first,
+                    ),
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(28),
+                      ),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.04),
+                          Colors.black.withValues(alpha: 0.14),
+                          Colors.black.withValues(alpha: 0.6),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    child: _HeroMetaChip(label: availabilityLabel),
+                  ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => controller.toggleSavedItem(item.id),
+                        child: Ink(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.26),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Icon(
+                            isSaved ? Icons.bookmark : Icons.bookmark_border,
+                            size: 18,
+                            color: isSaved
+                                ? const Color(0xFFE0C88A)
+                                : const Color(0xFFF1EBDD),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  if (artist != null)
+                    Text(
+                      artist.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: const Color(0xFFD8C89C),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  if (artist != null) const SizedBox(height: 8),
                   Text(
                     item.productName,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: const Color(0xFFF3ECDD),
+                      height: 1.15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   Text(
                     item.askingPrice == null
-                        ? 'Held'
+                        ? availabilityLabel
                         : formatCurrency(item.askingPrice!),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: OneOfOneTheme.gold),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: item.askingPrice == null
+                          ? const Color(0xFFE9DFCA)
+                          : OneOfOneTheme.gold,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    item.state.key.replaceAll('_', ' '),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          item.serialNumber,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => controller.toggleSavedItem(item.id),
-                        icon: Icon(
-                          controller.savedItemIds.contains(item.id)
-                              ? Icons.bookmark
-                              : Icons.bookmark_border,
-                        ),
-                      ),
+                      _LuxuryInfoChip(label: item.serialNumber),
+                      _LuxuryInfoChip(label: availabilityLabel),
                     ],
                   ),
                 ],
@@ -2816,6 +3077,48 @@ class _ShopItemCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ShopQuickFilterChip extends StatelessWidget {
+  const _ShopQuickFilterChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(color: const Color(0xFFD9D0C1)),
+      ),
+    );
+  }
+}
+
+String _shopAvailabilityLabel(UniqueItem item) {
+  if (item.askingPrice != null) {
+    return 'Available now';
+  }
+  switch (item.state) {
+    case ItemState.listedForResale:
+      return 'Listed for resale';
+    case ItemState.soldUnclaimed:
+      return 'Sold unclaimed';
+    case ItemState.claimed:
+      return 'Held';
+    case ItemState.transferred:
+      return 'Collector held';
+    default:
+      return item.state.key.replaceAll('_', ' ');
   }
 }
 
