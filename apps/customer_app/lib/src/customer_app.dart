@@ -5057,83 +5057,406 @@ class VaultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final List<UniqueItem> ownedItems = controller.vaultItems;
+    final List<UniqueItem> savedItems = controller.savedItems;
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: <Widget>[
-        Text('My collection', style: Theme.of(context).textTheme.displaySmall),
-        const SizedBox(height: 12),
-        if (controller.savedItems.isNotEmpty) ...<Widget>[
-          const Card(
-            child: ListTile(
-              title: Text('Saved items'),
-              subtitle: Text(
-                'Watchlisted collectibles for future resale drops and alerts.',
-              ),
-            ),
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           ),
-          ...controller.savedItems.map(
-            (UniqueItem item) => Card(
-              child: ListTile(
-                onTap: () => _openItemDetail(context, controller, item.id),
-                title: Text(item.productName),
-                subtitle: Text(item.serialNumber),
-                trailing: const Icon(Icons.bookmark),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'My vault',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: const Color(0xFFF4EEDF),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'A private archive of verified ownership, saved watchlist pieces, and collector resale readiness.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFFB9B1A5),
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: <Widget>[
+                  _VaultSummaryChip(
+                    label: 'Owned pieces',
+                    value: '${ownedItems.length}',
+                  ),
+                  _VaultSummaryChip(
+                    label: 'Saved items',
+                    value: '${savedItems.length}',
+                  ),
+                  _VaultSummaryChip(
+                    label: 'Ready for resale',
+                    value:
+                        '${ownedItems.where((UniqueItem item) => !item.state.isRestricted).length}',
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-        ],
-        if (controller.vaultItems.isEmpty)
-          const Card(
-            child: ListTile(
-              title: Text('No claimed collectibles yet.'),
-              subtitle: Text(
+        ),
+        const SizedBox(height: 28),
+        const _SectionHeader(
+          eyebrow: 'Owned archive',
+          title: 'Claimed collectibles',
+          caption:
+              'Your verified pieces, certificates, and resale readiness in one private view.',
+        ),
+        const SizedBox(height: 16),
+        if (ownedItems.isEmpty)
+          const _EmptyLuxuryCard(
+            title: 'No claimed collectibles yet',
+            body:
                 'Claim with the hidden packaged code after scanning a verified item.',
-              ),
-            ),
           ),
-        ...controller.vaultItems.map(
-          (UniqueItem item) => Card(
-            child: Column(
-              children: <Widget>[
-                ListTile(
-                  onTap: () => _openItemDetail(context, controller, item.id),
-                  title: Text(item.productName),
-                  subtitle: Text(
-                    'Certificate active - ${item.state.key.replaceAll('_', ' ')}',
-                  ),
-                  trailing: const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 16,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          item.serialNumber,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      if (item.currentOwnerUserId == controller.currentUserId &&
-                          !item.state.isRestricted)
-                        FilledButton.tonal(
-                          onPressed: () =>
-                              _openItemDetail(context, controller, item.id),
-                          child: const Text('Open & resell'),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+        ...ownedItems.map(
+          (UniqueItem item) => Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: _OwnedVaultCard(controller: controller, item: item),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const _SectionHeader(
+          eyebrow: 'Saved for watchlist',
+          title: 'Saved items',
+          caption:
+              'Quietly track future resale movement and return when the right piece opens.',
+        ),
+        const SizedBox(height: 16),
+        if (savedItems.isEmpty)
+          const _EmptyLuxuryCard(
+            title: 'No saved items yet',
+            body:
+                'Bookmark collectible pieces in the shop to keep a refined watchlist here.',
+          ),
+        ...savedItems.map(
+          (UniqueItem item) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _SavedVaultCard(controller: controller, item: item),
           ),
         ),
       ],
     );
   }
+}
+
+class _VaultSummaryChip extends StatelessWidget {
+  const _VaultSummaryChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: const Color(0xFFF0E5CB),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFFB7AE9F)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OwnedVaultCard extends StatelessWidget {
+  const _OwnedVaultCard({required this.controller, required this.item});
+
+  final CustomerController controller;
+  final UniqueItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final Artist? artist = controller.artistFor(item);
+    final bool canManageResale =
+        item.currentOwnerUserId == controller.currentUserId &&
+        !item.state.isRestricted;
+    return InkWell(
+      borderRadius: BorderRadius.circular(30),
+      onTap: () => _openItemDetail(context, controller, item.id),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: const Color(0xFF151515),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: OneOfOneTheme.gold.withValues(alpha: 0.14)),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.24),
+              blurRadius: 22,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            AspectRatio(
+              aspectRatio: 1.22,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(30),
+                    ),
+                    child: _EditorialImage(
+                      imageUrl: item.imageUrls.isEmpty
+                          ? null
+                          : item.imageUrls.first,
+                    ),
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(30),
+                      ),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.04),
+                          Colors.black.withValues(alpha: 0.16),
+                          Colors.black.withValues(alpha: 0.58),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 14,
+                    left: 14,
+                    child: _HeroMetaChip(label: _vaultStateLabel(item)),
+                  ),
+                  Positioned(
+                    left: 18,
+                    right: 18,
+                    bottom: 18,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        if (artist != null)
+                          Text(
+                            artist.displayName.toUpperCase(),
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  color: const Color(0xFFE4D29F),
+                                  letterSpacing: 1.1,
+                                ),
+                          ),
+                        if (artist != null) const SizedBox(height: 8),
+                        Text(
+                          item.productName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: const Color(0xFFF5F0E6),
+                                fontWeight: FontWeight.w600,
+                                height: 1.08,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      _LuxuryInfoChip(label: item.serialNumber),
+                      const _LuxuryInfoChip(label: 'Certificate active'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Private ownership is recorded server-side and prepared for verified transfer only.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFFBEB6AB),
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              _openItemDetail(context, controller, item.id),
+                          child: const Text('Open piece'),
+                        ),
+                      ),
+                      if (canManageResale) ...<Widget>[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.tonal(
+                            onPressed: () =>
+                                _openItemDetail(context, controller, item.id),
+                            child: const Text('Manage resale'),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedVaultCard extends StatelessWidget {
+  const _SavedVaultCard({required this.controller, required this.item});
+
+  final CustomerController controller;
+  final UniqueItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final Artist? artist = controller.artistFor(item);
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: () => _openItemDetail(context, controller, item.id),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: const Color(0xFF131313),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 58,
+                height: 72,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white.withValues(alpha: 0.04),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: _EditorialImage(
+                    imageUrl: item.imageUrls.isEmpty
+                        ? null
+                        : item.imageUrls.first,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.productName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFFF2ECDC),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      artist?.displayName ?? 'Collector selection',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFFBAAF9D),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Saved for watchlist · ${item.serialNumber}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF9C9385),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(
+                    Icons.bookmark,
+                    color: OneOfOneTheme.gold.withValues(alpha: 0.95),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'View collectible',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: const Color(0xFFD7CDBA),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _vaultStateLabel(UniqueItem item) {
+  if (item.state == ItemState.claimed) {
+    return 'Collector held';
+  }
+  if (item.state == ItemState.transferred) {
+    return 'Transferred';
+  }
+  if (item.state == ItemState.listedForResale) {
+    return 'Listed for resale';
+  }
+  return item.state.key.replaceAll('_', ' ');
 }
 
 class ProfileScreen extends StatelessWidget {

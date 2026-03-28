@@ -73,10 +73,12 @@ void main() {
       expect(find.text('Ember Archive Crew'), findsOneWidget);
       expect(find.text('Restricted Study Hoodie'), findsOneWidget);
 
-      final Finder afterglowCard = find.ancestor(
-        of: find.text('Afterglow Hand-Finished Tee'),
-        matching: find.byType(InkWell),
-      ).first;
+      final Finder afterglowCard = find
+          .ancestor(
+            of: find.text('Afterglow Hand-Finished Tee'),
+            matching: find.byType(InkWell),
+          )
+          .first;
       await tester.ensureVisible(afterglowCard);
       await tester.tap(afterglowCard);
       await tester.pumpAndSettle();
@@ -102,7 +104,9 @@ void main() {
 
       await _tapNav(tester, 'Scan');
       await _enterField(tester, 'QR token', 'qr_ember_02');
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Verify authenticity'));
+      await tester.tap(
+        find.widgetWithText(ElevatedButton, 'Verify authenticity'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Authenticity verified'), findsOneWidget);
@@ -126,7 +130,7 @@ void main() {
 
       await _tapNav(tester, 'Vault');
       expect(find.text('Ember Archive Crew'), findsOneWidget);
-      await tester.tap(find.widgetWithText(FilledButton, 'Open & resell'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Manage resale'));
       await tester.pumpAndSettle();
       expect(find.text('Ember Archive Crew'), findsAtLeastNWidgets(1));
       await _scrollUntilVisible(tester, find.text('Resell item'));
@@ -140,10 +144,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await _tapNav(tester, 'Shop');
-      final Finder emberCard = find.ancestor(
-        of: find.text('Ember Archive Crew'),
-        matching: find.byType(InkWell),
-      ).first;
+      final Finder emberCard = find
+          .ancestor(
+            of: find.text('Ember Archive Crew'),
+            matching: find.byType(InkWell),
+          )
+          .first;
       await tester.ensureVisible(emberCard);
       await tester.tap(emberCard);
       await tester.pumpAndSettle();
@@ -187,13 +193,16 @@ void main() {
 
       await _tapNav(tester, 'Vault');
       expect(find.text('Ember Archive Crew'), findsOneWidget);
-      expect(find.textContaining('Certificate active - disputed'), findsOneWidget);
+      expect(find.text('Certificate active'), findsAtLeastNWidgets(1));
+      expect(find.text('disputed'), findsOneWidget);
 
       await _tapNav(tester, 'Shop');
-      final Finder restrictedCard = find.ancestor(
-        of: find.text('Restricted Study Hoodie'),
-        matching: find.byType(InkWell),
-      ).first;
+      final Finder restrictedCard = find
+          .ancestor(
+            of: find.text('Restricted Study Hoodie'),
+            matching: find.byType(InkWell),
+          )
+          .first;
       await tester.ensureVisible(restrictedCard);
       await tester.tap(restrictedCard);
       await tester.pumpAndSettle();
@@ -201,7 +210,6 @@ void main() {
       expect(find.text('Resell item'), findsNothing);
       await tester.pageBack();
       await tester.pumpAndSettle();
-
     },
   );
 
@@ -274,10 +282,10 @@ void main() {
             repository: repository,
             paymentProvider: const MockPaymentProvider(),
           ),
-        authService: authService,
-        enableCameraScanner: false,
-      ),
-    );
+          authService: authService,
+          enableCameraScanner: false,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Collect the original.'), findsNothing);
@@ -331,45 +339,46 @@ void main() {
     },
   );
 
-  testWidgets('vault owners cannot authorize checkout on their own resale item', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 1920);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'vault owners cannot authorize checkout on their own resale item',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final DemoCatalog repository = DemoCatalog();
-    final _TestAuthService authService = _TestAuthService(
-      initialSession: _buildSession(
-        id: 'user_collector_1',
-        email: 'owner@example.com',
-        displayName: 'Owner Collector',
-        username: 'ownercollector',
-      ),
-    );
-
-    await tester.pumpWidget(
-      OneOfOneCustomerApp(
-        repository: repository,
-        workflowService: MarketplaceWorkflowService(
-          repository: repository,
-          paymentProvider: const MockPaymentProvider(),
+      final DemoCatalog repository = DemoCatalog();
+      final _TestAuthService authService = _TestAuthService(
+        initialSession: _buildSession(
+          id: 'user_collector_1',
+          email: 'owner@example.com',
+          displayName: 'Owner Collector',
+          username: 'ownercollector',
         ),
-        authService: authService,
-        enableCameraScanner: false,
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
 
-    await _tapNav(tester, 'Vault');
-    await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
-    await tester.pumpAndSettle();
-    await _scrollUntilVisible(tester, find.text('Report dispute'));
+      await tester.pumpWidget(
+        OneOfOneCustomerApp(
+          repository: repository,
+          workflowService: MarketplaceWorkflowService(
+            repository: repository,
+            paymentProvider: const MockPaymentProvider(),
+          ),
+          authService: authService,
+          enableCameraScanner: false,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Authorize checkout'), findsNothing);
-    expect(find.text('Resell item'), findsNothing);
-  });
+      await _tapNav(tester, 'Vault');
+      await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
+      await tester.pumpAndSettle();
+      await _scrollUntilVisible(tester, find.text('Report dispute'));
+
+      expect(find.text('Authorize checkout'), findsNothing);
+      expect(find.text('Resell item'), findsNothing);
+    },
+  );
 
   testWidgets(
     'manual payment proof submission shows progress, blocks duplicate submits, and updates status',
@@ -467,7 +476,6 @@ void main() {
       expect(find.text('Method: WavePay'), findsOneWidget);
       expect(find.text('Payer: Buyer Collector'), findsOneWidget);
       expect(find.text('Phone: 09123456789'), findsOneWidget);
-
     },
   );
 
@@ -587,7 +595,10 @@ void main() {
         find.text('Choose a PNG, JPG, WEBP, or GIF screenshot.'),
         findsOneWidget,
       );
-      expect(find.widgetWithText(FilledButton, 'Submit payment proof'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Submit payment proof'),
+        findsOneWidget,
+      );
     },
   );
 
@@ -630,10 +641,7 @@ void main() {
       await _tapNav(tester, 'Shop');
       await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
       await tester.pumpAndSettle();
-      await _scrollUntilVisible(
-        tester,
-        find.text('Collector conversation'),
-      );
+      await _scrollUntilVisible(tester, find.text('Collector conversation'));
 
       await _enterField(
         tester,
@@ -652,7 +660,10 @@ void main() {
 
       expect(repository.addCommentCalls, 1);
       expect(find.text('Posting...'), findsOneWidget);
-      expect(find.textContaining('verified collector conversation'), findsOneWidget);
+      expect(
+        find.textContaining('verified collector conversation'),
+        findsOneWidget,
+      );
 
       gate.complete();
       await tester.pumpAndSettle();
@@ -702,10 +713,7 @@ void main() {
       await _tapNav(tester, 'Shop');
       await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
       await tester.pumpAndSettle();
-      await _scrollUntilVisible(
-        tester,
-        find.text('Collector conversation'),
-      );
+      await _scrollUntilVisible(tester, find.text('Collector conversation'));
 
       await _enterField(
         tester,
@@ -771,10 +779,7 @@ void main() {
       await _tapNav(tester, 'Shop');
       await tester.tap(find.text('Afterglow Hand-Finished Tee').first);
       await tester.pumpAndSettle();
-      await _scrollUntilVisible(
-        tester,
-        find.text('Collector conversation'),
-      );
+      await _scrollUntilVisible(tester, find.text('Collector conversation'));
 
       await _enterField(
         tester,
@@ -814,8 +819,7 @@ Future<void> _enterField(
   String value,
 ) async {
   final Finder field = find.byWidgetPredicate((Widget widget) {
-    return widget is TextField &&
-        widget.decoration?.labelText == label;
+    return widget is TextField && widget.decoration?.labelText == label;
   });
   if (field.evaluate().isEmpty) {
     await tester.scrollUntilVisible(
@@ -910,7 +914,8 @@ class _TestAuthService extends SupabaseAuthService {
     if (_accounts.containsKey(normalizedEmail)) {
       return const AuthActionResult(
         success: false,
-        message: 'An account with this email already exists. Try signing in instead.',
+        message:
+            'An account with this email already exists. Try signing in instead.',
       );
     }
 
@@ -980,12 +985,13 @@ class _ControlledCommentDemoCatalog extends DemoCatalog {
   int addCommentCalls = 0;
 
   @override
-  List<ItemComment> commentsForItem(String itemId) => List<ItemComment>.unmodifiable(
-    <ItemComment>[
-      ..._postedComments.where((ItemComment comment) => comment.itemId == itemId),
-      ...super.commentsForItem(itemId),
-    ],
-  );
+  List<ItemComment> commentsForItem(String itemId) =>
+      List<ItemComment>.unmodifiable(<ItemComment>[
+        ..._postedComments.where(
+          (ItemComment comment) => comment.itemId == itemId,
+        ),
+        ...super.commentsForItem(itemId),
+      ]);
 
   @override
   Future<MarketplaceActionResult<ItemComment>> addItemComment({
